@@ -16,23 +16,21 @@ let notes = [];
 try {
   const data = fs.readFileSync(path.join(__dirname, 'notes.json'), 'utf8');
   notes = JSON.parse(data);
+  console.log('Loaded', notes.length, 'notes from file');
 } catch (error) {
   console.log('No existing notes file, starting fresh');
+  notes = [];
 }
 
 // Save notes to file
 function saveNotesToFile() {
-  fs.writeFileSync(path.join(__dirname, 'notes.json'), JSON.stringify(notes, null, 2));
-}
-
-// IMPORTANT: Serve the main page for ALL routes
-app.get('*', (req, res) => {
-  if (req.path.startsWith('/api/')) {
-    // Let API routes handle these
-    return next();
+  try {
+    fs.writeFileSync(path.join(__dirname, 'notes.json'), JSON.stringify(notes, null, 2));
+    console.log('Saved', notes.length, 'notes to file');
+  } catch (error) {
+    console.error('Error saving notes:', error);
   }
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+}
 
 // Routes
 app.get('/api/notes', (req, res) => {
@@ -46,6 +44,11 @@ app.post('/api/notes', (req, res) => {
   notes = req.body;
   saveNotesToFile();
   res.json({ message: 'Notes saved successfully', count: notes.length });
+});
+
+// Serve the main page for ALL other routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // Start server
