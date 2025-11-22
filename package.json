@@ -1,0 +1,12 @@
+{
+  "name": "shared-notes-app",
+  "version": "1.0.0",
+  "description": "Shared sticky notes wall",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

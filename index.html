@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ultimate Shared Sticky Notes Wall</title>
+<style>
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #f0f0f0;
+  overflow: auto;
+}
+
+#wall {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  background: #f5f5f5;
+  padding: 20px;
+  transition: background 0.3s ease;
+  background-size: cover;
+  background-position: center;
+}
+
+#toolbar {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  gap: 10px;
+  z-index: 1000;
+  flex-wrap: wrap;
+  background: rgba(255,255,255,0.95);
+  padding: 12px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.8);
+}
+
+.tool-btn {
+  padding: 10px 15px;
+  background: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tool-btn:hover {
+  background: #f0f0f0;
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+}
+
+.tool-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.color-palette {
+  display: none;
+  position: absolute;
+  top: 60px;
+  left: 0;
+  background: white;
+  padding: 12px;
+  border-radius: 12px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+  z-index: 1001;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  animation: fadeInUp 0.3s ease-out;
+}
+
+.color-option {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.color-option:hover {
+  transform: scale(1.2);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.color-option.active {
+  border-color: #333;
+  transform: scale(1.1);
+}
+
+.background-picker {
+  display: none;
+  position: absolute;
+  top: 60px;
+  left: 120px;
+  background: white;
+  padding: 15px;
+  border-radius: 12px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+  z-index: 1001;
+  gap: 10px;
+  flex-direction: column;
+  min-width: 200px;
+  animation: fadeInUp 0.3s ease-out;
+}
+
+.bg-option {
+  padding: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: #f8f8f8;
+  text-align: center;
+}
+
+.bg-option:hover {
+  background: #e8e8e8;
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.bg-option.active {
+  border-color: #4CAF50;
+  background: #e8f5e8;
+}
+
+.bg-color {
+  width: 100%;
+  height: 40px;
+  border-radius: 6px;
+  margin-top: 5px;
+}
+
+/* Note Styles - OPTIMIZED FOR PERFORMANCE */
+.note {
+  position: absolute;
+  min-width: 200px;
+  min-height: 150px;
+  background: #fff176;
+  border-radius: 12px;
+  padding: 15px;
+  box-shadow: 0 6px 25px rgba(0,0,0,0.15);
+  cursor: move;
+  overflow: hidden;
+  /* REMOVED transition during drag for better performance */
+  border: 1px solid rgba(255,255,255,0.4);
+  backdrop-filter: blur(5px);
+}
+
+.note:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 12px 35px rgba(0,0,0,0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.note.dragging {
+  transform: rotate(3deg) scale(1.05);
+  box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+  z-index: 1002;
+  /* NO transition during drag for smooth movement */
+  transition: none !important;
+}
+
+.note-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(0,0,0,0.1);
+}
+
+.note-title {
+  font-weight: bold;
+  font-size: 14px;
+  border: none;
+  background: transparent;
+  outline: none;
+  width: 100%;
+  padding: 5px;
+  transition: all 0.3s ease;
+  border-radius: 6px;
+  font-family: inherit;
+}
+
+.note-title:focus {
+  background: rgba(255,255,255,0.6);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.8);
+}
+
+.note-controls {
+  display: flex;
+  gap: 5px;
+}
+
+.note-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  background: rgba(0,0,0,0.1);
+  border: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.note-btn:hover {
+  background: rgba(0,0,0,0.2);
+  transform: scale(1.2) rotate(5deg);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+}
+
+.note-content {
+  width: 100%;
+  min-height: 80px;
+  border: none;
+  background: transparent;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  transition: all 0.3s ease;
+  border-radius: 6px;
+  padding: 5px;
+}
+
+.note-content:focus {
+  background: rgba(255,255,255,0.4);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.6);
+}
+
+/* Standalone Image Styles - OPTIMIZED */
+.standalone-image-container {
+  position: absolute;
+  border-radius: 12px;
+  box-shadow: 0 6px 25px rgba(0,0,0,0.2);
+  cursor: move;
+  /* REMOVED transition during drag for better performance */
+  border: 3px solid rgba(255,255,255,0.8);
+  backdrop-filter: blur(5px);
+  max-width: 400px;
+  max-height: 400px;
+  overflow: hidden;
+}
+
+.standalone-image-container:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 12px 35px rgba(0,0,0,0.25);
+  border-color: rgba(255,255,255,0.9);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.standalone-image-container.dragging {
+  transform: rotate(3deg) scale(1.05);
+  box-shadow: 0 15px 40px rgba(0,0,0,0.35);
+  z-index: 1002;
+  /* NO transition during drag for smooth movement */
+  transition: none !important;
+}
+
+.standalone-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 9px;
+}
+
+.note-image {
+  max-width: 100%;
+  max-height: 150px;
+  border-radius: 8px;
+  margin-top: 8px;
+  display: block;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 3px 10px rgba(0,0,0,0.15);
+}
+
+.note-image:hover {
+  transform: scale(1.04);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+}
+
+.resize-handle {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  width: 22px;
+  height: 22px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 6px;
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.9);
+  font-size: 12px;
+  backdrop-filter: blur(10px);
+}
+
+.resize-handle::after {
+  content: '⤢';
+  transform: rotate(45deg);
+}
+
+.note:hover .resize-handle,
+.standalone-image-container:hover .resize-handle {
+  opacity: 1;
+}
+
+.resize-handle:hover {
+  background: rgba(0,0,0,0.3);
+  transform: scale(1.1);
+}
+
+.resize-handle:active {
+  background: rgba(0,0,0,0.4);
+  transform: scale(0.95);
+}
+
+.status {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: white;
+  padding: 12px 18px;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+  font-size: 14px;
+  z-index: 1000;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.8);
+}
+
+.status.updating {
+  background: #fff3cd;
+  color: #856404;
+  border-color: #ffeaa7;
+}
+
+.notes-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.hidden {
+  display: none;
+}
+
+/* Image modal */
+.image-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.95);
+  z-index: 2000;
+  justify-content: center;
+  align-items: center;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.image-modal img {
+  max-width: 90%;
+  max-height: 90%;
+  border-radius: 15px;
+  box-shadow: 0 15px 50px rgba(0,0,0,0.6);
+  animation: zoomIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.close-modal {
+  position: absolute;
+  top: 25px;
+  right: 25px;
+  color: white;
+  font-size: 32px;
+  cursor: pointer;
+  background: rgba(0,0,0,0.6);
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  border: 2px solid rgba(255,255,255,0.3);
+}
+
+.close-modal:hover {
+  background: rgba(0,0,0,0.8);
+  transform: scale(1.1) rotate(90deg);
+  border-color: rgba(255,255,255,0.6);
+}
+
+/* Animations - OPTIMIZED */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes zoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes noteAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.8) translateY(25px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
+.bounce {
+  animation: bounce 1s ease;
+}
+
+.pulse {
+  animation: pulse 0.6s ease-in-out;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Sound toggle */
+.sound-toggle {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  background: white;
+  border: none;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+  z-index: 1000;
+  font-size: 20px;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.sound-toggle:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+}
+
+.sound-toggle.muted {
+  opacity: 0.6;
+  transform: scale(0.9);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  #toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .tool-btn {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+  
+  .note {
+    min-width: 180px;
+    min-height: 120px;
+  }
+  
+  .standalone-image-container {
+    max-width: 300px;
+    max-height: 300px;
+  }
+}
+</style>
+</head>
+
+<body>
+<div id="toolbar">
+  <button id="addBtn" class="tool-btn">+ New Note</button>
+  <button id="addImageBtn" class="tool-btn">📸 Add Image</button>
+  <button id="colorBtn" class="tool-btn">🎨 Colors</button>
+  <button id="bgBtn" class="tool-btn">🏞️ Background</button>
+  
+  <div id="colorPalette" class="color-palette">
+    <div class="color-option active" data-color="#fff176" style="background-color: #fff176;"></div>
+    <div class="color-option" data-color="#81d4fa" style="background-color: #81d4fa;"></div>
+    <div class="color-option" data-color="#a5d6a7" style="background-color: #a5d6a7;"></div>
+    <div class="color-option" data-color="#f48fb1" style="background-color: #f48fb1;"></div>
+    <div class="color-option" data-color="#ce93d8" style="background-color: #ce93d8;"></div>
+    <div class="color-option" data-color="#ffcc80" style="background-color: #ffcc80;"></div>
+    <div class="color-option" data-color="#e0e0e0" style="background-color: #e0e0e0;"></div>
+    <div class="color-option" data-color="#ffffff" style="background-color: #ffffff; border: 1px solid #ddd;"></div>
+  </div>
+  
+  <div id="backgroundPicker" class="background-picker">
+    <div class="bg-option active" data-bg="default">Default</div>
+    <div class="bg-option" data-bg="upload">Upload Image</div>
+    <div class="bg-option" data-bg="black">
+      Black
+      <div class="bg-color" style="background-color: #000000;"></div>
+    </div>
+    <div class="bg-option" data-bg="white">
+      White
+      <div class="bg-color" style="background-color: #ffffff; border: 1px solid #ddd;"></div>
+    </div>
+    <div class="bg-option" data-bg="blue">
+      Blue
+      <div class="bg-color" style="background-color: #2196F3;"></div>
+    </div>
+    <div class="bg-option" data-bg="green">
+      Green
+      <div class="bg-color" style="background-color: #4CAF50;"></div>
+    </div>
+  </div>
+</div>
+
+<div id="status" class="status">Loading...</div>
+<div id="wall" class="notes-container">
+  <!-- Notes and images will be added here by JavaScript -->
+</div>
+
+<button id="soundToggle" class="sound-toggle" title="Toggle sounds">🔊</button>
+
+<!-- Image upload input (hidden) -->
+<input type="file" id="imageUpload" accept="image/*" class="hidden">
+<input type="file" id="standaloneImageUpload" accept="image/*" class="hidden">
+<input type="file" id="bgUpload" accept="image/*" class="hidden">
+
+<!-- Image modal for viewing -->
+<div id="imageModal" class="image-modal">
+  <span class="close-modal">&times;</span>
+  <img id="modalImage" src="" alt="Enlarged image">
+</div>
+
+<script>
+// DOM Elements
+const wall = document.getElementById("wall");
+const addBtn = document.getElementById("addBtn");
+const addImageBtn = document.getElementById("addImageBtn");
+const colorBtn = document.getElementById("colorBtn");
+const colorPalette = document.getElementById("colorPalette");
+const bgBtn = document.getElementById("bgBtn");
+const backgroundPicker = document.getElementById("backgroundPicker");
+const status = document.getElementById("status");
+const imageUpload = document.getElementById("imageUpload");
+const standaloneImageUpload = document.getElementById("standaloneImageUpload");
+const bgUpload = document.getElementById("bgUpload");
+const imageModal = document.getElementById("imageModal");
+const modalImage = document.getElementById("modalImage");
+const closeModal = document.querySelector(".close-modal");
+const soundToggle = document.getElementById("soundToggle");
+
+// Server URL
+const serverUrl = window.location.origin;
+
+// State
+let notes = [];
+let isDragging = false;
+let currentElement = null;
+let dragOffset = { x: 0, y: 0 };
+let isResizing = false;
+let selectedColor = "#fff176";
+let currentColorNote = null;
+let isUserTyping = false;
+let resizeStartSize = { width: 0, height: 0 };
+let resizeStartPos = { x: 0, y: 0 };
+let soundsEnabled = true;
+
+// Background options
+const backgrounds = {
+  default: '#f5f5f5',
+  black: '#000000',
+  white: '#ffffff',
+  blue: '#2196F3',
+  green: '#4CAF50'
+};
+
+// Initialize
+async function init() {
+  setupEventListeners();
+  await loadNotes();
+  setInterval(smartRefresh, 3000);
+}
+
+// Smart refresh
+async function smartRefresh() {
+  if (isUserTyping) return;
+  
+  try {
+    const response = await fetch(`${serverUrl}/api/notes`);
+    if (!response.ok) return;
+    
+    const serverNotes = await response.json();
+    
+    if (JSON.stringify(notes) !== JSON.stringify(serverNotes) && !isUserTyping) {
+      notes = serverNotes;
+      renderNotes();
+      showStatus(`Updated ${notes.length} items`, 'updating');
+      setTimeout(() => showStatus(`Loaded ${notes.length} items`), 2000);
+    }
+  } catch (error) {
+    console.error('Error refreshing notes:', error);
+  }
+}
+
+// Set up event listeners
+function setupEventListeners() {
+  addBtn.addEventListener("click", () => {
+    createNote();
+    addBtn.classList.add('pulse');
+    setTimeout(() => addBtn.classList.remove('pulse'), 500);
+  });
+  
+  addImageBtn.addEventListener("click", () => {
+    standaloneImageUpload.click();
+  });
+  
+  // Color picker
+  colorBtn.addEventListener("click", toggleColorPalette);
+  document.querySelectorAll('.color-option').forEach(option => {
+    option.addEventListener('click', (e) => {
+      selectedColor = e.target.dataset.color;
+      document.querySelectorAll('.color-option').forEach(opt => {
+        opt.classList.toggle('active', opt === e.target);
+      });
+      
+      if (currentColorNote) {
+        currentColorNote.style.backgroundColor = selectedColor;
+        updateNoteColor(currentColorNote.dataset.id, selectedColor);
+        currentColorNote.classList.add('pulse');
+        setTimeout(() => currentColorNote.classList.remove('pulse'), 500);
+      }
+      
+      colorPalette.style.display = 'none';
+      currentColorNote = null;
+    });
+  });
+  
+  // Background picker
+  bgBtn.addEventListener("click", toggleBackgroundPicker);
+  document.querySelectorAll('.bg-option').forEach(option => {
+    option.addEventListener('click', (e) => {
+      const bgType = e.target.dataset.bg || e.target.parentElement.dataset.bg;
+      
+      if (bgType === 'upload') {
+        bgUpload.click();
+      } else {
+        setBackground(bgType);
+        wall.style.animation = 'pulse 0.5s ease-in-out';
+        setTimeout(() => wall.style.animation = '', 500);
+      }
+      
+      updateActiveBackground(bgType);
+      backgroundPicker.style.display = 'none';
+    });
+  });
+  
+  // Background upload
+  bgUpload.addEventListener('change', handleBackgroundUpload);
+  
+  // Image uploads
+  standaloneImageUpload.addEventListener('change', handleStandaloneImageUpload);
+  
+  // Image modal
+  closeModal.addEventListener('click', () => {
+    imageModal.style.display = 'none';
+  });
+  
+  imageModal.addEventListener('click', (e) => {
+    if (e.target === imageModal) {
+      imageModal.style.display = 'none';
+    }
+  });
+  
+  // Sound toggle
+  soundToggle.addEventListener('click', () => {
+    soundsEnabled = !soundsEnabled;
+    soundToggle.classList.toggle('muted', !soundsEnabled);
+    soundToggle.textContent = soundsEnabled ? '🔊' : '🔇';
+    soundToggle.classList.add('pulse');
+    setTimeout(() => soundToggle.classList.remove('pulse'), 500);
+  });
+  
+  // Close pickers when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!colorBtn.contains(e.target) && !colorPalette.contains(e.target)) {
+      colorPalette.style.display = 'none';
+      currentColorNote = null;
+    }
+    
+    if (!bgBtn.contains(e.target) && !backgroundPicker.contains(e.target)) {
+      backgroundPicker.style.display = 'none';
+    }
+  });
+  
+  // Keyboard shortcut
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+      e.preventDefault();
+      createNote();
+    }
+  });
+}
+
+// Load notes from server
+async function loadNotes() {
+  try {
+    const response = await fetch(`${serverUrl}/api/notes`);
+    
+    if (!response.ok) throw new Error('Failed to load notes');
+    
+    notes = await response.json();
+    renderNotes();
+    showStatus(`Loaded ${notes.length} items`);
+    
+  } catch (error) {
+    console.error('Error loading notes:', error);
+    showStatus('Error loading notes');
+  }
+}
+
+// Save notes to server
+async function saveNotes() {
+  try {
+    const response = await fetch(`${serverUrl}/api/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(notes),
+    });
+    
+    if (!response.ok) throw new Error('Failed to save notes');
+    
+  } catch (error) {
+    console.error('Error saving notes:', error);
+  }
+}
+
+// Show status with animation
+function showStatus(message, type = '') {
+  status.textContent = message;
+  status.className = `status ${type}`;
+}
+
+// Create a new note
+async function createNote(x = 50, y = 50) {
+  const newNote = {
+    id: Date.now().toString(),
+    type: 'note',
+    x,
+    y,
+    width: 250,
+    height: 200,
+    title: 'New Note',
+    content: 'Type your note here...',
+    color: selectedColor,
+    image: null
+  };
+  
+  notes.push(newNote);
+  renderNotes();
+  await saveNotes();
+}
+
+// Handle standalone image upload
+function handleStandaloneImageUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  if (file.size > 5 * 1024 * 1024) {
+    showStatus('Image too large! Max 5MB allowed.', 'updating');
+    return;
+  }
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const standaloneImage = {
+      id: Date.now().toString(),
+      type: 'image',
+      x: 100,
+      y: 100,
+      width: 300,
+      height: 300,
+      src: e.target.result
+    };
+    
+    notes.push(standaloneImage);
+    renderNotes();
+    saveNotes();
+    showStatus('Image added to wall!');
+  };
+  reader.readAsDataURL(file);
+}
+
+// Render all notes and images
+function renderNotes() {
+  const activeElement = document.activeElement;
+  let focusedNoteId = null;
+  let selectionStart = null;
+  let selectionEnd = null;
+  
+  if (activeElement && (activeElement.classList.contains('note-title') || activeElement.classList.contains('note-content'))) {
+    const noteElement = activeElement.closest('.note');
+    if (noteElement) {
+      focusedNoteId = noteElement.dataset.id;
+      selectionStart = activeElement.selectionStart;
+      selectionEnd = activeElement.selectionEnd;
+    }
+  }
+  
+  const existingElements = wall.querySelectorAll('.note, .standalone-image-container');
+  existingElements.forEach(element => element.remove());
+  
+  notes.forEach(note => {
+    if (note.type === 'image') {
+      const imageElement = createImageElement(note);
+      wall.appendChild(imageElement);
+    } else {
+      const noteElement = createNoteElement(note);
+      wall.appendChild(noteElement);
+      
+      if (note.id === focusedNoteId) {
+        const inputType = activeElement.classList.contains('note-title') ? 'note-title' : 'note-content';
+        const input = noteElement.querySelector(`.${inputType}`);
+        if (input) {
+          setTimeout(() => {
+            input.focus();
+            input.setSelectionRange(selectionStart, selectionEnd);
+          }, 10);
+        }
+      }
+    }
+  });
+}
+
+// Create note DOM element
+function createNoteElement(note) {
+  const noteDiv = document.createElement('div');
+  noteDiv.className = 'note';
+  noteDiv.style.left = note.x + 'px';
+  noteDiv.style.top = note.y + 'px';
+  noteDiv.style.width = note.width + 'px';
+  noteDiv.style.height = note.height + 'px';
+  noteDiv.style.backgroundColor = note.color;
+  noteDiv.dataset.id = note.id;
+  
+  noteDiv.innerHTML = `
+    <div class="note-header">
+      <input type="text" class="note-title" value="${note.title}" placeholder="Note title">
+      <div class="note-controls">
+        <button class="note-btn color-btn" title="Change color">🎨</button>
+        <button class="note-btn image-btn" title="Add image">🖼️</button>
+        <button class="note-btn delete-btn" title="Delete note">×</button>
+      </div>
+    </div>
+    <textarea class="note-content" placeholder="Type your note here...">${note.content}</textarea>
+    ${note.image ? `<img src="${note.image}" class="note-image" alt="Note image">` : ''}
+    <div class="resize-handle" title="Resize"></div>
+  `;
+  
+  setupNoteEvents(noteDiv, note);
+  return noteDiv;
+}
+
+// Create standalone image element
+function createImageElement(note) {
+  const container = document.createElement('div');
+  container.className = 'standalone-image-container';
+  container.style.left = note.x + 'px';
+  container.style.top = note.y + 'px';
+  container.style.width = note.width + 'px';
+  container.style.height = note.height + 'px';
+  container.dataset.id = note.id;
+  
+  container.innerHTML = `
+    <img src="${note.src}" class="standalone-image" alt="Uploaded image">
+    <div class="note-controls" style="position: absolute; top: 10px; right: 10px;">
+      <button class="note-btn delete-btn" title="Delete image">×</button>
+    </div>
+    <div class="resize-handle" title="Resize"></div>
+  `;
+  
+  setupImageEvents(container, note);
+  return container;
+}
+
+// Set up event listeners for a note
+function setupNoteEvents(noteElement, noteData) {
+  // Delete button - FIXED: Immediate removal without animation delay
+  noteElement.querySelector('.delete-btn').addEventListener('click', async (e) => {
+    e.stopPropagation();
+    // IMMEDIATE removal - no animation delay
+    notes = notes.filter(n => n.id !== noteData.id);
+    renderNotes();
+    await saveNotes();
+  });
+  
+  // Color button
+  noteElement.querySelector('.color-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    currentColorNote = noteElement;
+    
+    const rect = noteElement.getBoundingClientRect();
+    colorPalette.style.left = (rect.left - 100) + 'px';
+    colorPalette.style.top = (rect.top + 40) + 'px';
+    colorPalette.style.display = 'grid';
+    
+    document.querySelectorAll('.color-option').forEach(opt => {
+      opt.classList.toggle('active', opt.dataset.color === noteData.color);
+    });
+  });
+  
+  // Image button
+  noteElement.querySelector('.image-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    currentColorNote = noteElement;
+    imageUpload.onchange = (e) => handleImageUpload(e, noteData.id);
+    imageUpload.click();
+  });
+  
+  // Image click to enlarge
+  const noteImage = noteElement.querySelector('.note-image');
+  if (noteImage) {
+    noteImage.addEventListener('click', () => {
+      modalImage.src = noteImage.src;
+      imageModal.style.display = 'flex';
+    });
+  }
+  
+  // Title input
+  const titleInput = noteElement.querySelector('.note-title');
+  titleInput.addEventListener('input', async (e) => {
+    isUserTyping = true;
+    noteData.title = e.target.value;
+    await saveNotes();
+    setTimeout(() => { isUserTyping = false; }, 1000);
+  });
+  
+  titleInput.addEventListener('focus', () => { isUserTyping = true; });
+  titleInput.addEventListener('blur', () => { isUserTyping = false; });
+  
+  // Content input
+  const contentInput = noteElement.querySelector('.note-content');
+  contentInput.addEventListener('input', async (e) => {
+    isUserTyping = true;
+    noteData.content = e.target.value;
+    await saveNotes();
+    setTimeout(() => { isUserTyping = false; }, 1000);
+  });
+  
+  contentInput.addEventListener('focus', () => { isUserTyping = true; });
+  contentInput.addEventListener('blur', () => { isUserTyping = false; });
+  
+  // Drag functionality
+  setupDrag(noteElement, noteData);
+  
+  // Resize functionality
+  setupResize(noteElement, noteData);
+}
+
+// Set up event listeners for standalone image
+function setupImageEvents(imageElement, imageData) {
+  // Delete button - FIXED: Immediate removal without animation delay
+  imageElement.querySelector('.delete-btn').addEventListener('click', async (e) => {
+    e.stopPropagation();
+    // IMMEDIATE removal - no animation delay
+    notes = notes.filter(n => n.id !== imageData.id);
+    renderNotes();
+    await saveNotes();
+  });
+  
+  // Image click to enlarge
+  const img = imageElement.querySelector('.standalone-image');
+  img.addEventListener('click', (e) => {
+    if (e.target.classList.contains('note-btn')) return;
+    modalImage.src = img.src;
+    imageModal.style.display = 'flex';
+  });
+  
+  // Drag functionality
+  setupDrag(imageElement, imageData);
+  
+  // Resize functionality
+  setupResize(imageElement, imageData);
+}
+
+// Drag functionality - OPTIMIZED: No transitions during drag
+function setupDrag(element, data) {
+  element.addEventListener('mousedown', (e) => {
+    if (e.target.classList.contains('resize-handle') || 
+        e.target.tagName === 'INPUT' || 
+        e.target.tagName === 'TEXTAREA' ||
+        e.target.classList.contains('note-btn')) {
+      return;
+    }
+    
+    e.preventDefault();
+    isDragging = true;
+    currentElement = element;
+    element.classList.add('dragging');
+    
+    const rect = element.getBoundingClientRect();
+    dragOffset.x = e.clientX - rect.left;
+    dragOffset.y = e.clientY - rect.top;
+    
+    function drag(e) {
+      if (!isDragging) return;
+      const x = e.clientX - dragOffset.x;
+      const y = e.clientY - dragOffset.y;
+      
+      element.style.left = x + 'px';
+      element.style.top = y + 'px';
+    }
+    
+    function stopDrag() {
+      isDragging = false;
+      element.classList.remove('dragging');
+      data.x = parseInt(element.style.left);
+      data.y = parseInt(element.style.top);
+      saveNotes();
+      
+      document.removeEventListener('mousemove', drag);
+      document.removeEventListener('mouseup', stopDrag);
+    }
+    
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('mouseup', stopDrag);
+  });
+}
+
+// Enhanced Resize functionality
+function setupResize(element, data) {
+  const handle = element.querySelector('.resize-handle');
+  
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizing = true;
+    element.classList.add('resizing');
+    
+    resizeStartSize.width = element.offsetWidth;
+    resizeStartSize.height = element.offsetHeight;
+    resizeStartPos.x = e.clientX;
+    resizeStartPos.y = e.clientY;
+    
+    function resize(e) {
+      if (!isResizing) return;
+      
+      const deltaX = e.clientX - resizeStartPos.x;
+      const deltaY = e.clientY - resizeStartPos.y;
+      
+      const newWidth = Math.max(200, resizeStartSize.width + deltaX);
+      const newHeight = Math.max(150, resizeStartSize.height + deltaY);
+      
+      element.style.width = newWidth + 'px';
+      element.style.height = newHeight + 'px';
+    }
+    
+    function stopResize() {
+      isResizing = false;
+      element.classList.remove('resizing');
+      data.width = parseInt(element.style.width);
+      data.height = parseInt(element.style.height);
+      saveNotes();
+      
+      document.removeEventListener('mousemove', resize);
+      document.removeEventListener('mouseup', stopResize);
+    }
+    
+    document.addEventListener('mousemove', resize);
+    document.addEventListener('mouseup', stopResize);
+  });
+}
+
+// Handle image upload to note
+function handleImageUpload(event, noteId) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  if (file.size > 5 * 1024 * 1024) {
+    showStatus('Image too large! Max 5MB allowed.', 'updating');
+    return;
+  }
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const note = notes.find(n => n.id === noteId);
+    if (note) {
+      note.image = e.target.result;
+      renderNotes();
+      saveNotes();
+      showStatus('Image added to note!');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// Handle background upload
+function handleBackgroundUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  if (file.size > 10 * 1024 * 1024) {
+    showStatus('Background image too large! Max 10MB allowed.', 'updating');
+    return;
+  }
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    wall.style.backgroundImage = `url(${e.target.result})`;
+    localStorage.setItem('customBackground', e.target.result);
+    showStatus('Background updated!');
+  };
+  reader.readAsDataURL(file);
+}
+
+// Set background
+function setBackground(bgType) {
+  if (bgType === 'default') {
+    wall.style.backgroundImage = 'none';
+    wall.style.backgroundColor = backgrounds.default;
+    localStorage.removeItem('customBackground');
+  } else if (backgrounds[bgType]) {
+    wall.style.backgroundImage = 'none';
+    wall.style.backgroundColor = backgrounds[bgType];
+    localStorage.removeItem('customBackground');
+  }
+}
+
+// Update active background in picker
+function updateActiveBackground(activeBg) {
+  document.querySelectorAll('.bg-option').forEach(option => {
+    option.classList.toggle('active', option.dataset.bg === activeBg);
+  });
+}
+
+// Update note color
+function updateNoteColor(noteId, color) {
+  const note = notes.find(n => n.id === noteId);
+  if (note) {
+    note.color = color;
+    saveNotes();
+  }
+}
+
+// Toggle color palette
+function toggleColorPalette() {
+  colorPalette.style.display = colorPalette.style.display === 'grid' ? 'none' : 'grid';
+  backgroundPicker.style.display = 'none';
+  currentColorNote = null;
+}
+
+// Toggle background picker
+function toggleBackgroundPicker() {
+  backgroundPicker.style.display = backgroundPicker.style.display === 'flex' ? 'none' : 'flex';
+  colorPalette.style.display = 'none';
+}
+
+// Load saved background on startup
+function loadSavedBackground() {
+  const savedBg = localStorage.getItem('customBackground');
+  if (savedBg) {
+    wall.style.backgroundImage = `url(${savedBg})`;
+  }
+}
+
+// Initialize the app
+init();
+loadSavedBackground();
+</script>
+</body>
+</html>
