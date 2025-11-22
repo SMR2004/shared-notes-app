@@ -7,14 +7,14 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware - increase payload size for images
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static('.'));
+app.use(express.static(__dirname));
 
 // Store notes in memory
 let notes = [];
 
 // Load notes from file if it exists
 try {
-  const data = fs.readFileSync('notes.json', 'utf8');
+  const data = fs.readFileSync(path.join(__dirname, 'notes.json'), 'utf8');
   notes = JSON.parse(data);
 } catch (error) {
   console.log('No existing notes file, starting fresh');
@@ -22,28 +22,34 @@ try {
 
 // Save notes to file
 function saveNotesToFile() {
-  fs.writeFileSync('notes.json', JSON.stringify(notes, null, 2));
+  fs.writeFileSync(path.join(__dirname, 'notes.json'), JSON.stringify(notes, null, 2));
 }
 
-// Routes
-app.get('/', (req, res) => {
+// IMPORTANT: Serve the main page for ALL routes
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) {
+    // Let API routes handle these
+    return next();
+  }
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Get all notes
+// Routes
 app.get('/api/notes', (req, res) => {
+  console.log('GET /api/notes - Returning', notes.length, 'notes');
   res.json(notes);
 });
 
 // Save all notes
 app.post('/api/notes', (req, res) => {
+  console.log('POST /api/notes - Saving', req.body.length, 'notes');
   notes = req.body;
   saveNotesToFile();
   res.json({ message: 'Notes saved successfully', count: notes.length });
 });
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`Enhanced Shared Notes app running on http://localhost:${PORT}`);
-  console.log('All features enabled: colors, resizing, images, backgrounds!');
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Shared Notes app running on http://0.0.0.0:${PORT}`);
+  console.log('Your app is ready for production!');
 });
