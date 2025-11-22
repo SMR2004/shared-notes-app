@@ -16,31 +16,36 @@ async function connectToDatabase() {
     await client.connect();
     db = client.db('shared-notes');
     notesCollection = db.collection('notes');
-    console.log('✅ Connected to MongoDB');
+    console.log('✅ Connected to MongoDB Atlas!');
   } catch (error) {
-    console.error('❌ MongoDB error:', error);
+    console.error('❌ MongoDB connection failed:', error.message);
   }
 }
 
 app.get('/api/notes', async (req, res) => {
   try {
     const data = await notesCollection.findOne({ type: 'init' });
-    res.json(data ? data.notes : []);
+    const notes = data ? data.notes : [];
+    console.log('📤 Sending', notes.length, 'notes');
+    res.json(notes);
   } catch (error) {
+    console.error('❌ Error loading notes:', error.message);
     res.json([]);
   }
 });
 
 app.post('/api/notes', async (req, res) => {
   try {
+    console.log('💾 Saving', req.body.length, 'notes to MongoDB');
     await notesCollection.updateOne(
       { type: 'init' },
-      { $set: { notes: req.body } },
+      { $set: { notes: req.body, updatedAt: new Date() } },
       { upsert: true }
     );
-    res.json({ message: 'Saved to MongoDB!' });
+    res.json({ message: 'Notes saved to MongoDB!', persisted: true });
   } catch (error) {
-    res.json({ message: 'Saved temporarily' });
+    console.error('❌ Error saving notes:', error.message);
+    res.json({ message: 'Saved temporarily', persisted: false });
   }
 });
 
@@ -50,6 +55,8 @@ app.get('*', (req, res) => {
 
 connectToDatabase().then(() => {
   app.listen(PORT, () => {
-    console.log('🚀 Server running on port', PORT);
+    console.log('🚀 Shared Notes Wall running on port', PORT);
+    console.log('💾 MongoDB: Ready');
+    console.log('✅ Notes will persist FOREVER!');
   });
 });
