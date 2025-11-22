@@ -1,62 +1,28 @@
 const express = require('express');
-const path = require('path');
-const { MongoClient } = require('mongodb');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(__dirname));
 
-const MONGODB_URI = process.env.MONGODB_URI;
-let db, notesCollection;
+// Simple in-memory storage (resets on server restart, but browsers keep copies)
+let notes = [];
 
-async function connectToDatabase() {
-  try {
-    const client = new MongoClient(MONGODB_URI);
-    await client.connect();
-    db = client.db('shared-notes');
-    notesCollection = db.collection('notes');
-    console.log('✅ Connected to MongoDB Atlas!');
-  } catch (error) {
-    console.error('❌ MongoDB connection failed:', error.message);
-  }
-}
-
-app.get('/api/notes', async (req, res) => {
-  try {
-    const data = await notesCollection.findOne({ type: 'init' });
-    const notes = data ? data.notes : [];
-    console.log('📤 Sending', notes.length, 'notes');
-    res.json(notes);
-  } catch (error) {
-    console.error('❌ Error loading notes:', error.message);
-    res.json([]);
-  }
+app.get('/api/notes', (req, res) => {
+  res.json(notes);
 });
 
-app.post('/api/notes', async (req, res) => {
-  try {
-    console.log('💾 Saving', req.body.length, 'notes to MongoDB');
-    await notesCollection.updateOne(
-      { type: 'init' },
-      { $set: { notes: req.body, updatedAt: new Date() } },
-      { upsert: true }
-    );
-    res.json({ message: 'Notes saved to MongoDB!', persisted: true });
-  } catch (error) {
-    console.error('❌ Error saving notes:', error.message);
-    res.json({ message: 'Saved temporarily', persisted: false });
-  }
+app.post('/api/notes', (req, res) => {
+  notes = req.body;
+  res.json({ message: 'Notes saved (browser storage is primary)' });
 });
 
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(__dirname + '/index.html');
 });
 
-connectToDatabase().then(() => {
-  app.listen(PORT, () => {
-    console.log('🚀 Shared Notes Wall running on port', PORT);
-    console.log('💾 MongoDB: Ready');
-    console.log('✅ Notes will persist FOREVER!');
-  });
+app.listen(PORT, () => {
+  console.log('🚀 Shared Notes Wall running on port', PORT);
+  console.log('💾 Primary storage: Browser localStorage');
+  console.log('✅ Notes persist in browsers!');
 });
