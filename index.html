@@ -619,7 +619,7 @@ const exportBtn = document.getElementById("exportBtn");
 const searchBox = document.getElementById("searchBox");
 const searchInput = document.getElementById("searchInput");
 const doSearch = document.getElementById("doSearch");
-const clearSearchBtn = document.getElementById("clearSearchBtn"); // FIXED: Renamed to avoid conflict
+const clearSearchBtn = document.getElementById("clearSearchBtn");
 
 // State
 let notes = [];
@@ -634,7 +634,7 @@ let resizeStartSize = { width: 0, height: 0 };
 let resizeStartPos = { x: 0, y: 0 };
 let soundsEnabled = true;
 
-// Background options
+// Background options - LOCAL ONLY
 const backgrounds = {
   default: '#f5f5f5',
   black: '#000000',
@@ -643,15 +643,60 @@ const backgrounds = {
   green: '#4CAF50'
 };
 
-// Initialize - NO AUTHENTICATION
+// Initialize - NO BACKGROUND SYNCING
 async function init() {
   setupEventListeners();
-  await loadNotes();
+  loadLocalBackground(); // Load background from localStorage
+  await loadNotes(); // Notes still sync globally
   setInterval(smartRefresh, 3000);
   showStatus('Ready! Shared notes wall loaded.');
 }
 
-// Smart refresh
+// Load background from localStorage
+function loadLocalBackground() {
+  const saved = localStorage.getItem('wallBackground');
+  if (saved) {
+    try {
+      const background = JSON.parse(saved);
+      applyBackground(background);
+      updateActiveBackground(background.type === 'color' ? getBackgroundType(background.value) : 'upload');
+      return;
+    } catch (e) {
+      console.log('No saved background found, using default');
+    }
+  }
+  applyBackground({ type: 'color', value: '#f5f5f5' });
+}
+
+// Apply background to wall
+function applyBackground(background) {
+  if (background.type === 'color') {
+    wall.style.backgroundImage = 'none';
+    wall.style.backgroundColor = background.value;
+  } else if (background.type === 'image') {
+    wall.style.backgroundImage = `url(${background.value})`;
+    wall.style.backgroundSize = 'cover';
+    wall.style.backgroundPosition = 'center';
+  }
+}
+
+// Save background to localStorage only
+function saveLocalBackground(type, value) {
+  const background = { type, value };
+  localStorage.setItem('wallBackground', JSON.stringify(background));
+  applyBackground(background);
+  showStatus('Background updated!');
+}
+
+// Get background type from color value
+function getBackgroundType(colorValue) {
+  for (const [key, value] of Object.entries(backgrounds)) {
+    if (value === colorValue) return key;
+  }
+  return 'default';
+}
+
+// Smart refresh - NOTES ONLY (no background syncing)
 async function smartRefresh() {
   if (isUserTyping) return;
   
@@ -670,26 +715,23 @@ async function smartRefresh() {
   }
 }
 
-// Set up event listeners - COMPLETELY REWRITTEN
+// Set up event listeners
 function setupEventListeners() {
-  // Toolbar buttons - FIXED WITH IMMEDIATE VISUAL FEEDBACK
+  // Toolbar buttons
   addBtn.addEventListener("click", () => {
-    console.log("+ New Note clicked");
     createNote();
     addBtn.classList.add('pulse');
     setTimeout(() => addBtn.classList.remove('pulse'), 500);
   });
   
   addImageBtn.addEventListener("click", () => {
-    console.log("📸 Add Image clicked");
     standaloneImageUpload.click();
     addImageBtn.classList.add('pulse');
     setTimeout(() => addImageBtn.classList.remove('pulse'), 500);
   });
   
-  // Color picker - FIXED
+  // Color picker
   colorBtn.addEventListener("click", () => {
-    console.log("🎨 Colors clicked");
     toggleColorPalette();
     colorBtn.classList.add('pulse');
     setTimeout(() => colorBtn.classList.remove('pulse'), 500);
@@ -714,9 +756,8 @@ function setupEventListeners() {
     });
   });
   
-  // Background picker - FIXED
+  // Background picker - NOW LOCAL ONLY
   bgBtn.addEventListener("click", () => {
-    console.log("🏞️ Background clicked");
     toggleBackgroundPicker();
     bgBtn.classList.add('pulse');
     setTimeout(() => bgBtn.classList.remove('pulse'), 500);
@@ -729,7 +770,8 @@ function setupEventListeners() {
       if (bgType === 'upload') {
         bgUpload.click();
       } else {
-        setBackground(bgType);
+        const colorValue = backgrounds[bgType] || '#f5f5f5';
+        saveLocalBackground('color', colorValue);
         wall.style.animation = 'pulse 0.5s ease-in-out';
         setTimeout(() => wall.style.animation = '', 500);
       }
@@ -739,15 +781,14 @@ function setupEventListeners() {
     });
   });
   
-  // Background upload - FIXED
+  // Background upload - NOW LOCAL ONLY
   bgUpload.addEventListener('change', handleBackgroundUpload);
   
-  // Image uploads - FIXED
+  // Image uploads - STILL SYNC GLOBALLY
   standaloneImageUpload.addEventListener('change', handleStandaloneImageUpload);
   
-  // Search functionality - COMPLETELY REWRITTEN
+  // Search functionality
   searchBtn.addEventListener('click', () => {
-    console.log("🔍 Search clicked");
     toggleSearch();
     searchBtn.classList.add('pulse');
     setTimeout(() => searchBtn.classList.remove('pulse'), 500);
@@ -755,19 +796,14 @@ function setupEventListeners() {
   
   doSearch.addEventListener('click', performSearch);
   
-  // FIXED: Renamed to clearSearchBtn to avoid function name conflict
-  clearSearchBtn.addEventListener('click', () => {
-    console.log("Clear search clicked");
-    clearSearchFunction();
-  });
+  clearSearchBtn.addEventListener('click', clearSearchFunction);
   
   searchInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') performSearch();
   });
   
-  // Export - FIXED
+  // Export
   exportBtn.addEventListener('click', () => {
-    console.log("📤 Export clicked");
     exportNotes();
     exportBtn.classList.add('pulse');
     setTimeout(() => exportBtn.classList.remove('pulse'), 500);
@@ -793,7 +829,7 @@ function setupEventListeners() {
     setTimeout(() => soundToggle.classList.remove('pulse'), 500);
   });
   
-  // Close pickers when clicking outside - FIXED
+  // Close pickers when clicking outside
   document.addEventListener('click', (e) => {
     if (!colorBtn.contains(e.target) && !colorPalette.contains(e.target)) {
       colorPalette.style.display = 'none';
@@ -818,7 +854,7 @@ function setupEventListeners() {
   });
 }
 
-// Load notes from server
+// Load notes from server - UNCHANGED
 async function loadNotes() {
   try {
     const response = await fetch('/api/notes');
@@ -835,7 +871,7 @@ async function loadNotes() {
   }
 }
 
-// Save notes to server
+// Save notes to server - UNCHANGED
 async function saveNotes() {
   try {
     const response = await fetch('/api/notes', {
@@ -851,13 +887,13 @@ async function saveNotes() {
   }
 }
 
-// Show status with animation
+// Show status with animation - UNCHANGED
 function showStatus(message, type = '') {
   status.textContent = message;
   status.className = `status ${type}`;
 }
 
-// Create a new note
+// Create a new note - UNCHANGED
 async function createNote(x = 50, y = 50) {
   const newNote = {
     id: Date.now().toString(),
@@ -881,7 +917,7 @@ async function createNote(x = 50, y = 50) {
   showStatus('New note created!');
 }
 
-// Handle standalone image upload
+// Handle standalone image upload - UNCHANGED
 function handleStandaloneImageUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -913,7 +949,7 @@ function handleStandaloneImageUpload(event) {
   reader.readAsDataURL(file);
 }
 
-// Render all notes and images
+// Render all notes and images - UNCHANGED
 function renderNotes() {
   const activeElement = document.activeElement;
   let focusedNoteId = null;
@@ -954,7 +990,7 @@ function renderNotes() {
   });
 }
 
-// Create note DOM element
+// Create note DOM element - UNCHANGED
 function createNoteElement(note) {
   const noteDiv = document.createElement('div');
   noteDiv.className = 'note';
@@ -985,7 +1021,7 @@ function createNoteElement(note) {
   return noteDiv;
 }
 
-// Create standalone image element
+// Create standalone image element - UNCHANGED
 function createImageElement(note) {
   const container = document.createElement('div');
   container.className = 'standalone-image-container';
@@ -1007,7 +1043,7 @@ function createImageElement(note) {
   return container;
 }
 
-// Set up event listeners for a note
+// Set up event listeners for a note - UNCHANGED
 function setupNoteEvents(noteElement, noteData) {
   // Delete button
   noteElement.querySelector('.delete-btn').addEventListener('click', async (e) => {
@@ -1093,7 +1129,7 @@ function setupNoteEvents(noteElement, noteData) {
   setupResize(noteElement, noteData);
 }
 
-// Set up event listeners for standalone image
+// Set up event listeners for standalone image - UNCHANGED
 function setupImageEvents(imageElement, imageData) {
   // Delete button
   imageElement.querySelector('.delete-btn').addEventListener('click', async (e) => {
@@ -1119,7 +1155,7 @@ function setupImageEvents(imageElement, imageData) {
   setupResize(imageElement, imageData);
 }
 
-// Drag functionality
+// Drag functionality - UNCHANGED
 function setupDrag(element, data) {
   element.addEventListener('mousedown', (e) => {
     if (e.target.classList.contains('resize-handle') || 
@@ -1163,7 +1199,7 @@ function setupDrag(element, data) {
   });
 }
 
-// Resize functionality
+// Resize functionality - UNCHANGED
 function setupResize(element, data) {
   const handle = element.querySelector('.resize-handle');
   
@@ -1207,7 +1243,7 @@ function setupResize(element, data) {
   });
 }
 
-// Handle image upload to note
+// Handle image upload to note - UNCHANGED
 function handleImageUpload(event, noteId) {
   const file = event.target.files[0];
   if (!file) return;
@@ -1230,7 +1266,7 @@ function handleImageUpload(event, noteId) {
   reader.readAsDataURL(file);
 }
 
-// Handle background upload
+// Handle background upload - NOW LOCAL ONLY
 function handleBackgroundUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -1242,24 +1278,11 @@ function handleBackgroundUpload(event) {
   
   const reader = new FileReader();
   reader.onload = (e) => {
-    wall.style.backgroundImage = `url(${e.target.result})`;
-    localStorage.setItem('customBackground', e.target.result);
+    saveLocalBackground('image', e.target.result);
+    updateActiveBackground('upload');
     showStatus('Background updated!');
   };
   reader.readAsDataURL(file);
-}
-
-// Set background
-function setBackground(bgType) {
-  if (bgType === 'default') {
-    wall.style.backgroundImage = 'none';
-    wall.style.backgroundColor = backgrounds.default;
-    localStorage.removeItem('customBackground');
-  } else if (backgrounds[bgType]) {
-    wall.style.backgroundImage = 'none';
-    wall.style.backgroundColor = backgrounds[bgType];
-    localStorage.removeItem('customBackground');
-  }
 }
 
 // Update active background in picker
@@ -1269,7 +1292,7 @@ function updateActiveBackground(activeBg) {
   });
 }
 
-// Update note color
+// Update note color - UNCHANGED
 function updateNoteColor(noteId, color) {
   const note = notes.find(n => n.id === noteId);
   if (note) {
@@ -1278,7 +1301,7 @@ function updateNoteColor(noteId, color) {
   }
 }
 
-// Toggle color palette - FIXED
+// Toggle color palette - UNCHANGED
 function toggleColorPalette() {
   const isVisible = colorPalette.style.display === 'grid';
   colorPalette.style.display = isVisible ? 'none' : 'grid';
@@ -1287,7 +1310,7 @@ function toggleColorPalette() {
   currentColorNote = null;
 }
 
-// Toggle background picker - FIXED
+// Toggle background picker - UNCHANGED
 function toggleBackgroundPicker() {
   const isVisible = backgroundPicker.style.display === 'flex';
   backgroundPicker.style.display = isVisible ? 'none' : 'flex';
@@ -1295,7 +1318,7 @@ function toggleBackgroundPicker() {
   searchBox.style.display = 'none';
 }
 
-// Search functionality - FIXED
+// Search functionality - UNCHANGED
 function toggleSearch() {
   const isVisible = searchBox.style.display === 'block';
   searchBox.style.display = isVisible ? 'none' : 'block';
@@ -1323,14 +1346,13 @@ async function performSearch() {
   }
 }
 
-// FIXED: Renamed to avoid function name conflict
 function clearSearchFunction() {
   searchInput.value = '';
   loadNotes();
   searchBox.style.display = 'none';
 }
 
-// Export notes
+// Export notes - UNCHANGED
 async function exportNotes() {
   try {
     const response = await fetch('/api/export');
@@ -1349,17 +1371,8 @@ async function exportNotes() {
   }
 }
 
-// Load saved background on startup
-function loadSavedBackground() {
-  const savedBg = localStorage.getItem('customBackground');
-  if (savedBg) {
-    wall.style.backgroundImage = `url(${savedBg})`;
-  }
-}
-
 // Initialize the app
 init();
-loadSavedBackground();
 </script>
 </body>
 </html>
