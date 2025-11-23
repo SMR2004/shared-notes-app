@@ -36,7 +36,7 @@ let isUserTyping = false;
 let resizeStartSize = { width: 0, height: 0 };
 let resizeStartPos = { x: 0, y: 0 };
 let soundsEnabled = true;
-let currentBackground = { type: 'color', value: '#f5f5f5' }; // NEW: Track current background
+let currentBackground = { type: 'color', value: '#f5f5f5' };
 
 // Background options
 const backgrounds = {
@@ -50,38 +50,38 @@ const backgrounds = {
 // Initialize - NO AUTHENTICATION
 async function init() {
   setupEventListeners();
-  await loadBackground(); // NEW: Load shared background first
+  await loadBackground();
   await loadNotes();
   setInterval(smartRefresh, 3000);
   showStatus('Ready! Shared notes wall loaded.');
 }
 
-// NEW: Load shared background from server
+// Load shared background from server
 async function loadBackground() {
   try {
     const response = await fetch('/api/background');
     const background = await response.json();
-    currentBackground = background;
+    currentBackground = { ...background };
     applyBackground(background);
   } catch (error) {
     console.error('Error loading background:', error);
-    // Fallback to default
+    currentBackground = { type: 'color', value: '#f5f5f5' };
     applyBackground({ type: 'color', value: '#f5f5f5' });
   }
 }
 
-// NEW: Apply background to wall
+// Apply background to wall
 function applyBackground(background) {
   if (background.type === 'color') {
     wall.style.backgroundImage = 'none';
     wall.style.backgroundColor = background.value;
   } else if (background.type === 'image') {
     wall.style.backgroundImage = `url(${background.value})`;
-    wall.style.backgroundColor = '#f5f5f5'; // Fallback color
+    wall.style.backgroundColor = '#f5f5f5';
   }
 }
 
-// NEW: Save background to server (shared for all users)
+// Save background to server (shared for all users)
 async function saveBackground(type, value) {
   try {
     const response = await fetch('/api/background', {
@@ -100,7 +100,7 @@ async function saveBackground(type, value) {
   }
 }
 
-// Smart refresh - UPDATED: Also refresh background
+// Smart refresh - FIXED: Proper background sync
 async function smartRefresh() {
   if (isUserTyping) return;
   
@@ -109,8 +109,10 @@ async function smartRefresh() {
     const bgResponse = await fetch('/api/background');
     const serverBackground = await bgResponse.json();
     
-    if (JSON.stringify(currentBackground) !== JSON.stringify(serverBackground)) {
-      currentBackground = serverBackground;
+    // FIX: Proper background comparison
+    if (currentBackground.type !== serverBackground.type || 
+        currentBackground.value !== serverBackground.value) {
+      currentBackground = { ...serverBackground };
       applyBackground(serverBackground);
     }
     
@@ -173,7 +175,7 @@ function setupEventListeners() {
     });
   });
   
-  // Background picker - UPDATED: Save to server
+  // Background picker
   bgBtn.addEventListener("click", () => {
     console.log("🏞️ Background clicked");
     toggleBackgroundPicker();
@@ -188,7 +190,6 @@ function setupEventListeners() {
       if (bgType === 'upload') {
         bgUpload.click();
       } else {
-        // Save color background to server
         const colorValue = backgrounds[bgType] || '#f5f5f5';
         saveBackground('color', colorValue);
         applyBackground({ type: 'color', value: colorValue });
@@ -201,7 +202,7 @@ function setupEventListeners() {
     });
   });
   
-  // Background upload - UPDATED: Save image to server
+  // Background upload
   bgUpload.addEventListener('change', handleBackgroundUpload);
   
   // Image uploads
@@ -299,10 +300,8 @@ async function loadNotes() {
 // Save notes to server - OPTIMIZED: Debounced saving
 let saveTimeout;
 async function saveNotes() {
-  // Clear previous timeout to prevent multiple rapid saves
   if (saveTimeout) clearTimeout(saveTimeout);
   
-  // Debounce saving to reduce server load
   saveTimeout = setTimeout(async () => {
     try {
       const response = await fetch('/api/notes', {
@@ -316,7 +315,7 @@ async function saveNotes() {
     } catch (error) {
       console.error('Error saving notes:', error);
     }
-  }, 500); // Wait 500ms after last change
+  }, 500);
 }
 
 // Show status with animation
@@ -611,7 +610,6 @@ function setupDrag(element, data) {
     function drag(e) {
       if (!isDragging) return;
       
-      // Use requestAnimationFrame for smoother dragging
       if (dragFrame) cancelAnimationFrame(dragFrame);
       
       dragFrame = requestAnimationFrame(() => {
@@ -632,7 +630,6 @@ function setupDrag(element, data) {
         dragFrame = null;
       }
       
-      // Only save final position, not during drag (reduces lag)
       data.x = parseInt(element.style.left);
       data.y = parseInt(element.style.top);
       saveNotes();
@@ -713,7 +710,7 @@ function handleImageUpload(event, noteId) {
   reader.readAsDataURL(file);
 }
 
-// Handle background upload - UPDATED: Save to server
+// Handle background upload
 function handleBackgroundUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -725,7 +722,6 @@ function handleBackgroundUpload(event) {
   
   const reader = new FileReader();
   reader.onload = (e) => {
-    // Save image background to server
     saveBackground('image', e.target.result);
     applyBackground({ type: 'image', value: e.target.result });
     showStatus('Background updated for all users!');
@@ -733,7 +729,7 @@ function handleBackgroundUpload(event) {
   reader.readAsDataURL(file);
 }
 
-// Set background - UPDATED: Now uses shared background
+// Set background
 function setBackground(bgType) {
   if (bgType === 'default') {
     saveBackground('color', '#f5f5f5');
