@@ -1,746 +1,126 @@
-// DOM Elements
-const wall = document.getElementById("wall");
-const status = document.getElementById("status");
-const imageUpload = document.getElementById("imageUpload");
-const standaloneImageUpload = document.getElementById("standaloneImageUpload");
-const bgUpload = document.getElementById("bgUpload");
-const imageModal = document.getElementById("imageModal");
-const modalImage = document.getElementById("modalImage");
-const closeModal = document.querySelector(".close-modal");
-const soundToggle = document.getElementById("soundToggle");
+const express = require('express');
+const { MongoClient, ObjectId } = require('mongodb');
+const path = require('path');
+const fs = require('fs');
 
-// Toolbar elements
-const addBtn = document.getElementById("addBtn");
-const addImageBtn = document.getElementById("addImageBtn");
-const colorBtn = document.getElementById("colorBtn");
-const colorPalette = document.getElementById("colorPalette");
-const bgBtn = document.getElementById("bgBtn");
-const backgroundPicker = document.getElementById("backgroundPicker");
-const searchBtn = document.getElementById("searchBtn");
-const exportBtn = document.getElementById("exportBtn");
-const searchBox = document.getElementById("searchBox");
-const searchInput = document.getElementById("searchInput");
-const doSearch = document.getElementById("doSearch");
-const clearSearchBtn = document.getElementById("clearSearchBtn");
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-// State
-let notes = [];
-let isDragging = false;
-let currentElement = null;
-let dragOffset = { x: 0, y: 0 };
-let isResizing = false;
-let selectedColor = "#fff176";
-let currentColorNote = null;
-let isUserTyping = false;
-let resizeStartSize = { width: 0, height: 0 };
-let resizeStartPos = { x: 0, y: 0 };
-let soundsEnabled = true;
+// Middleware
+app.use(express.json({ limit: '50mb' }));
+app.use(express.static('.'));
 
-// Background options - LOCAL ONLY
-const backgrounds = {
-  default: '#f5f5f5',
-  black: '#000000',
-  white: '#ffffff',
-  blue: '#2196F3',
-  green: '#4CAF50'
-};
+// MongoDB connection
+const mongoUrl = process.env.MONGODB_URI || 'mongodb://localhost:27017';
+const dbName = 'shared-notes';
+let db;
 
-// Initialize
-async function init() {
-  setupEventListeners();
-  loadLocalBackground();
-  await loadNotes();
-  setInterval(smartRefresh, 3000);
-  showStatus('Ready! Shared notes wall loaded.');
-}
-
-// Load background from localStorage
-function loadLocalBackground() {
-  const saved = localStorage.getItem('wallBackground');
-  if (saved) {
-    try {
-      const background = JSON.parse(saved);
-      applyBackground(background);
-      return;
-    } catch (e) {}
-  }
-  applyBackground({ type: 'color', value: '#f5f5f5' });
-}
-
-// Apply background to wall
-function applyBackground(background) {
-  if (background.type === 'color') {
-    wall.style.backgroundImage = 'none';
-    wall.style.backgroundColor = background.value;
-  } else if (background.type === 'image') {
-    wall.style.backgroundImage = `url(${background.value})`;
-    wall.style.backgroundSize = 'cover';
-    wall.style.backgroundPosition = 'center';
-  }
-}
-
-// Save background to localStorage only
-function saveLocalBackground(type, value) {
-  const background = { type, value };
-  localStorage.setItem('wallBackground', JSON.stringify(background));
-  applyBackground(background);
-  showStatus('Background updated!');
-}
-
-// Smart refresh - NOTES ONLY
-async function smartRefresh() {
-  if (isUserTyping) return;
-  
+// Connect to MongoDB
+async function connectDB() {
   try {
-    const notesResponse = await fetch('/api/notes');
-    if (!notesResponse.ok) return;
-    
-    const serverNotes = await notesResponse.json();
-    
-    if (JSON.stringify(notes) !== JSON.stringify(serverNotes) && !isUserTyping) {
-      notes = serverNotes;
-      renderNotes();
-    }
+    const client = new MongoClient(mongoUrl);
+    await client.connect();
+    db = client.db(dbName);
+    console.log('Connected to MongoDB');
   } catch (error) {
-    console.error('Error refreshing:', error);
+    console.error('MongoDB connection error:', error);
   }
 }
 
-// Set up event listeners
-function setupEventListeners() {
-  addBtn.addEventListener("click", () => {
-    createNote();
-    addBtn.classList.add('pulse');
-    setTimeout(() => addBtn.classList.remove('pulse'), 500);
-  });
-  
-  addImageBtn.addEventListener("click", () => {
-    standaloneImageUpload.click();
-    addImageBtn.classList.add('pulse');
-    setTimeout(() => addImageBtn.classList.remove('pulse'), 500);
-  });
-  
-  colorBtn.addEventListener("click", () => {
-    toggleColorPalette();
-    colorBtn.classList.add('pulse');
-    setTimeout(() => colorBtn.classList.remove('pulse'), 500);
-  });
-  
-  document.querySelectorAll('.color-option').forEach(option => {
-    option.addEventListener('click', (e) => {
-      selectedColor = e.target.dataset.color;
-      document.querySelectorAll('.color-option').forEach(opt => {
-        opt.classList.toggle('active', opt === e.target);
-      });
-      
-      if (currentColorNote) {
-        currentColorNote.style.backgroundColor = selectedColor;
-        updateNoteColor(currentColorNote.dataset.id, selectedColor);
-        currentColorNote.classList.add('pulse');
-        setTimeout(() => currentColorNote.classList.remove('pulse'), 500);
-      }
-      
-      colorPalette.style.display = 'none';
-      currentColorNote = null;
-    });
-  });
-  
-  bgBtn.addEventListener("click", () => {
-    toggleBackgroundPicker();
-    bgBtn.classList.add('pulse');
-    setTimeout(() => bgBtn.classList.remove('pulse'), 500);
-  });
-  
-  document.querySelectorAll('.bg-option').forEach(option => {
-    option.addEventListener('click', (e) => {
-      const bgType = e.target.dataset.bg || e.target.parentElement.dataset.bg;
-      
-      if (bgType === 'upload') {
-        bgUpload.click();
-      } else {
-        const colorValue = backgrounds[bgType] || '#f5f5f5';
-        saveLocalBackground('color', colorValue);
-        wall.style.animation = 'pulse 0.5s ease-in-out';
-        setTimeout(() => wall.style.animation = '', 500);
-      }
-      
-      backgroundPicker.style.display = 'none';
-    });
-  });
-  
-  bgUpload.addEventListener('change', handleBackgroundUpload);
-  standaloneImageUpload.addEventListener('change', handleStandaloneImageUpload);
-  
-  searchBtn.addEventListener('click', () => {
-    toggleSearch();
-    searchBtn.classList.add('pulse');
-    setTimeout(() => searchBtn.classList.remove('pulse'), 500);
-  });
-  
-  doSearch.addEventListener('click', performSearch);
-  clearSearchBtn.addEventListener('click', clearSearchFunction);
-  
-  searchInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') performSearch();
-  });
-  
-  exportBtn.addEventListener('click', () => {
-    exportNotes();
-    exportBtn.classList.add('pulse');
-    setTimeout(() => exportBtn.classList.remove('pulse'), 500);
-  });
-  
-  closeModal.addEventListener('click', () => {
-    imageModal.style.display = 'none';
-  });
-  
-  imageModal.addEventListener('click', (e) => {
-    if (e.target === imageModal) {
-      imageModal.style.display = 'none';
-    }
-  });
-  
-  soundToggle.addEventListener('click', () => {
-    soundsEnabled = !soundsEnabled;
-    soundToggle.classList.toggle('muted', !soundsEnabled);
-    soundToggle.textContent = soundsEnabled ? '🔊' : '🔇';
-    soundToggle.classList.add('pulse');
-    setTimeout(() => soundToggle.classList.remove('pulse'), 500);
-  });
-  
-  document.addEventListener('click', (e) => {
-    if (!colorBtn.contains(e.target) && !colorPalette.contains(e.target)) {
-      colorPalette.style.display = 'none';
-      currentColorNote = null;
-    }
-    
-    if (!bgBtn.contains(e.target) && !backgroundPicker.contains(e.target)) {
-      backgroundPicker.style.display = 'none';
-    }
-    
-    if (!searchBtn.contains(e.target) && !searchBox.contains(e.target)) {
-      searchBox.style.display = 'none';
-    }
-  });
-  
-  document.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
-      e.preventDefault();
-      createNote();
-    }
-  });
-}
+// Routes - NOTES ONLY (no background routes)
 
-// Load notes from server
-async function loadNotes() {
+// Get all notes
+app.get('/api/notes', async (req, res) => {
   try {
-    const response = await fetch('/api/notes');
-    if (!response.ok) throw new Error('Failed to load notes');
-    
-    notes = await response.json();
-    renderNotes();
-    showStatus(`Loaded ${notes.length} notes`);
-    
+    const notes = await db.collection('notes').find({}).toArray();
+    res.json(notes);
   } catch (error) {
-    console.error('Error loading notes:', error);
-    showStatus('Ready! Create your first note.');
+    console.error('Error fetching notes:', error);
+    res.status(500).json({ error: 'Failed to fetch notes' });
   }
-}
+});
 
-// Save notes to server
-let saveTimeout;
-async function saveNotes() {
-  if (saveTimeout) clearTimeout(saveTimeout);
-  
-  saveTimeout = setTimeout(async () => {
-    try {
-      const response = await fetch('/api/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(notes),
-      });
-      
-      if (!response.ok) throw new Error('Failed to save notes');
-      
-    } catch (error) {
-      console.error('Error saving notes:', error);
-    }
-  }, 500);
-}
-
-// Show status with animation
-function showStatus(message, type = '') {
-  status.textContent = message;
-  status.className = `status ${type}`;
-}
-
-// Create a new note
-async function createNote(x = 50, y = 50) {
-  const newNote = {
-    id: Date.now().toString(),
-    type: 'note',
-    x,
-    y,
-    width: 250,
-    height: 200,
-    title: 'New Note',
-    content: 'Type your note here...',
-    color: selectedColor,
-    image: null,
-    tags: [],
-    isPublic: true,
-    createdAt: new Date().toISOString()
-  };
-  
-  notes.push(newNote);
-  renderNotes();
-  await saveNotes();
-  showStatus('New note created!');
-}
-
-// Handle standalone image upload
-function handleStandaloneImageUpload(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  
-  if (file.size > 5 * 1024 * 1024) {
-    showStatus('Image too large! Max 5MB allowed.', 'updating');
-    return;
-  }
-  
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const standaloneImage = {
-      id: Date.now().toString(),
-      type: 'image',
-      x: 100,
-      y: 100,
-      width: 300,
-      height: 300,
-      src: e.target.result,
-      isPublic: true,
-      createdAt: new Date().toISOString()
-    };
-    
-    notes.push(standaloneImage);
-    renderNotes();
-    saveNotes();
-    showStatus('Image added to wall!');
-  };
-  reader.readAsDataURL(file);
-}
-
-// Render all notes and images
-function renderNotes() {
-  const activeElement = document.activeElement;
-  let focusedNoteId = null;
-  let selectionStart = null;
-  let selectionEnd = null;
-  
-  if (activeElement && (activeElement.classList.contains('note-title') || activeElement.classList.contains('note-content'))) {
-    const noteElement = activeElement.closest('.note');
-    if (noteElement) {
-      focusedNoteId = noteElement.dataset.id;
-      selectionStart = activeElement.selectionStart;
-      selectionEnd = activeElement.selectionEnd;
-    }
-  }
-  
-  const existingElements = wall.querySelectorAll('.note, .standalone-image-container');
-  existingElements.forEach(element => element.remove());
-  
-  notes.forEach(note => {
-    if (note.type === 'image') {
-      const imageElement = createImageElement(note);
-      wall.appendChild(imageElement);
-    } else {
-      const noteElement = createNoteElement(note);
-      wall.appendChild(noteElement);
-      
-      if (note.id === focusedNoteId) {
-        const inputType = activeElement.classList.contains('note-title') ? 'note-title' : 'note-content';
-        const input = noteElement.querySelector(`.${inputType}`);
-        if (input) {
-          setTimeout(() => {
-            input.focus();
-            input.setSelectionRange(selectionStart, selectionEnd);
-          }, 10);
-        }
-      }
-    }
-  });
-}
-
-// Create note DOM element
-function createNoteElement(note) {
-  const noteDiv = document.createElement('div');
-  noteDiv.className = 'note';
-  noteDiv.style.left = note.x + 'px';
-  noteDiv.style.top = note.y + 'px';
-  noteDiv.style.width = note.width + 'px';
-  noteDiv.style.height = note.height + 'px';
-  noteDiv.style.backgroundColor = note.color;
-  noteDiv.dataset.id = note.id;
-  
-  noteDiv.innerHTML = `
-    <div class="note-header">
-      <input type="text" class="note-title" value="${note.title}" placeholder="Note title">
-      <div class="note-controls">
-        <button class="note-btn color-btn" title="Change color">🎨</button>
-        <button class="note-btn tag-btn" title="Add tags">🏷️</button>
-        <button class="note-btn image-btn" title="Add image">🖼️</button>
-        <button class="note-btn delete-btn" title="Delete note">×</button>
-      </div>
-    </div>
-    <textarea class="note-content" placeholder="Type your note here...">${note.content}</textarea>
-    ${note.tags && note.tags.length > 0 ? `<div class="note-tags">${note.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}</div>` : ''}
-    ${note.image ? `<img src="${note.image}" class="note-image" alt="Note image">` : ''}
-    <div class="resize-handle" title="Resize"></div>
-  `;
-  
-  setupNoteEvents(noteDiv, note);
-  return noteDiv;
-}
-
-// Create standalone image element
-function createImageElement(note) {
-  const container = document.createElement('div');
-  container.className = 'standalone-image-container';
-  container.style.left = note.x + 'px';
-  container.style.top = note.y + 'px';
-  container.style.width = note.width + 'px';
-  container.style.height = note.height + 'px';
-  container.dataset.id = note.id;
-  
-  container.innerHTML = `
-    <img src="${note.src}" class="standalone-image" alt="Uploaded image">
-    <div class="note-controls" style="position: absolute; top: 10px; right: 10px;">
-      <button class="note-btn delete-btn" title="Delete image">×</button>
-    </div>
-    <div class="resize-handle" title="Resize"></div>
-  `;
-  
-  setupImageEvents(container, note);
-  return container;
-}
-
-// Set up event listeners for a note
-function setupNoteEvents(noteElement, noteData) {
-  noteElement.querySelector('.delete-btn').addEventListener('click', async (e) => {
-    e.stopPropagation();
-    notes = notes.filter(n => n.id !== noteData.id);
-    renderNotes();
-    await saveNotes();
-    showStatus('Note deleted');
-  });
-  
-  noteElement.querySelector('.color-btn').addEventListener('click', (e) => {
-    e.stopPropagation();
-    currentColorNote = noteElement;
-    
-    const rect = noteElement.getBoundingClientRect();
-    colorPalette.style.left = (rect.left - 100) + 'px';
-    colorPalette.style.top = (rect.top + 40) + 'px';
-    colorPalette.style.display = 'grid';
-    
-    document.querySelectorAll('.color-option').forEach(opt => {
-      opt.classList.toggle('active', opt.dataset.color === noteData.color);
-    });
-  });
-  
-  noteElement.querySelector('.tag-btn').addEventListener('click', (e) => {
-    e.stopPropagation();
-    const tag = prompt('Enter tags (comma separated):', noteData.tags ? noteData.tags.join(', ') : '');
-    if (tag !== null) {
-      noteData.tags = tag.split(',').map(t => t.trim()).filter(t => t);
-      renderNotes();
-      saveNotes();
-      showStatus('Tags updated');
-    }
-  });
-  
-  noteElement.querySelector('.image-btn').addEventListener('click', (e) => {
-    e.stopPropagation();
-    currentColorNote = noteElement;
-    imageUpload.onchange = (e) => handleImageUpload(e, noteData.id);
-    imageUpload.click();
-  });
-  
-  const noteImage = noteElement.querySelector('.note-image');
-  if (noteImage) {
-    noteImage.addEventListener('click', () => {
-      modalImage.src = noteImage.src;
-      imageModal.style.display = 'flex';
-    });
-  }
-  
-  const titleInput = noteElement.querySelector('.note-title');
-  titleInput.addEventListener('input', async (e) => {
-    isUserTyping = true;
-    noteData.title = e.target.value;
-    await saveNotes();
-    setTimeout(() => { isUserTyping = false; }, 1000);
-  });
-  
-  titleInput.addEventListener('focus', () => { isUserTyping = true; });
-  titleInput.addEventListener('blur', () => { isUserTyping = false; });
-  
-  const contentInput = noteElement.querySelector('.note-content');
-  contentInput.addEventListener('input', async (e) => {
-    isUserTyping = true;
-    noteData.content = e.target.value;
-    await saveNotes();
-    setTimeout(() => { isUserTyping = false; }, 1000);
-  });
-  
-  contentInput.addEventListener('focus', () => { isUserTyping = true; });
-  contentInput.addEventListener('blur', () => { isUserTyping = false; });
-  
-  setupDrag(noteElement, noteData);
-  setupResize(noteElement, noteData);
-}
-
-// Set up event listeners for standalone image
-function setupImageEvents(imageElement, imageData) {
-  imageElement.querySelector('.delete-btn').addEventListener('click', async (e) => {
-    e.stopPropagation();
-    notes = notes.filter(n => n.id !== imageData.id);
-    renderNotes();
-    await saveNotes();
-    showStatus('Image deleted');
-  });
-  
-  const img = imageElement.querySelector('.standalone-image');
-  img.addEventListener('click', (e) => {
-    if (e.target.classList.contains('note-btn')) return;
-    modalImage.src = img.src;
-    imageModal.style.display = 'flex';
-  });
-  
-  setupDrag(imageElement, imageData);
-  setupResize(imageElement, imageData);
-}
-
-// Drag functionality
-function setupDrag(element, data) {
-  let dragFrame;
-  
-  element.addEventListener('mousedown', (e) => {
-    if (e.target.classList.contains('resize-handle') || 
-        e.target.tagName === 'INPUT' || 
-        e.target.tagName === 'TEXTAREA' ||
-        e.target.classList.contains('note-btn')) {
-      return;
-    }
-    
-    e.preventDefault();
-    isDragging = true;
-    currentElement = element;
-    element.classList.add('dragging');
-    
-    const rect = element.getBoundingClientRect();
-    dragOffset.x = e.clientX - rect.left;
-    dragOffset.y = e.clientY - rect.top;
-    
-    function drag(e) {
-      if (!isDragging) return;
-      
-      if (dragFrame) cancelAnimationFrame(dragFrame);
-      
-      dragFrame = requestAnimationFrame(() => {
-        const x = e.clientX - dragOffset.x;
-        const y = e.clientY - dragOffset.y;
-        
-        element.style.left = x + 'px';
-        element.style.top = y + 'px';
-      });
-    }
-    
-    function stopDrag() {
-      isDragging = false;
-      element.classList.remove('dragging');
-      
-      if (dragFrame) {
-        cancelAnimationFrame(dragFrame);
-        dragFrame = null;
-      }
-      
-      data.x = parseInt(element.style.left);
-      data.y = parseInt(element.style.top);
-      saveNotes();
-      
-      document.removeEventListener('mousemove', drag);
-      document.removeEventListener('mouseup', stopDrag);
-    }
-    
-    document.addEventListener('mousemove', drag);
-    document.addEventListener('mouseup', stopDrag);
-  });
-}
-
-// Resize functionality
-function setupResize(element, data) {
-  const handle = element.querySelector('.resize-handle');
-  
-  handle.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    isResizing = true;
-    element.classList.add('resizing');
-    
-    resizeStartSize.width = element.offsetWidth;
-    resizeStartSize.height = element.offsetHeight;
-    resizeStartPos.x = e.clientX;
-    resizeStartPos.y = e.clientY;
-    
-    function resize(e) {
-      if (!isResizing) return;
-      
-      const deltaX = e.clientX - resizeStartPos.x;
-      const deltaY = e.clientY - resizeStartPos.y;
-      
-      const newWidth = Math.max(200, resizeStartSize.width + deltaX);
-      const newHeight = Math.max(150, resizeStartSize.height + deltaY);
-      
-      element.style.width = newWidth + 'px';
-      element.style.height = newHeight + 'px';
-    }
-    
-    function stopResize() {
-      isResizing = false;
-      element.classList.remove('resizing');
-      data.width = parseInt(element.style.width);
-      data.height = parseInt(element.style.height);
-      saveNotes();
-      
-      document.removeEventListener('mousemove', resize);
-      document.removeEventListener('mouseup', stopResize);
-    }
-    
-    document.addEventListener('mousemove', resize);
-    document.addEventListener('mouseup', stopResize);
-  });
-}
-
-// Handle image upload to note
-function handleImageUpload(event, noteId) {
-  const file = event.target.files[0];
-  if (!file) return;
-  
-  if (file.size > 5 * 1024 * 1024) {
-    showStatus('Image too large! Max 5MB allowed.', 'updating');
-    return;
-  }
-  
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const note = notes.find(n => n.id === noteId);
-    if (note) {
-      note.image = e.target.result;
-      renderNotes();
-      saveNotes();
-      showStatus('Image added to note!');
-    }
-  };
-  reader.readAsDataURL(file);
-}
-
-// Handle background upload
-function handleBackgroundUpload(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  
-  if (file.size > 10 * 1024 * 1024) {
-    showStatus('Background image too large! Max 10MB allowed.', 'updating');
-    return;
-  }
-  
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    saveLocalBackground('image', e.target.result);
-    showStatus('Background updated!');
-  };
-  reader.readAsDataURL(file);
-}
-
-// Update note color
-function updateNoteColor(noteId, color) {
-  const note = notes.find(n => n.id === noteId);
-  if (note) {
-    note.color = color;
-    saveNotes();
-  }
-}
-
-// Toggle color palette
-function toggleColorPalette() {
-  const isVisible = colorPalette.style.display === 'grid';
-  colorPalette.style.display = isVisible ? 'none' : 'grid';
-  backgroundPicker.style.display = 'none';
-  searchBox.style.display = 'none';
-  currentColorNote = null;
-}
-
-// Toggle background picker
-function toggleBackgroundPicker() {
-  const isVisible = backgroundPicker.style.display === 'flex';
-  backgroundPicker.style.display = isVisible ? 'none' : 'flex';
-  colorPalette.style.display = 'none';
-  searchBox.style.display = 'none';
-}
-
-// Search functionality
-function toggleSearch() {
-  const isVisible = searchBox.style.display === 'block';
-  searchBox.style.display = isVisible ? 'none' : 'block';
-  colorPalette.style.display = 'none';
-  backgroundPicker.style.display = 'none';
-  
-  if (!isVisible) {
-    searchInput.focus();
-  }
-}
-
-async function performSearch() {
-  const query = searchInput.value;
-  if (!query.trim()) return;
-  
+// Save all notes
+app.post('/api/notes', async (req, res) => {
   try {
-    const response = await fetch(`/api/notes/search?query=${encodeURIComponent(query)}`);
-    const searchResults = await response.json();
+    const notes = req.body;
     
-    notes = searchResults;
-    renderNotes();
-    showStatus(`Found ${searchResults.length} notes matching "${query}"`);
+    // Clear existing notes and insert new ones
+    await db.collection('notes').deleteMany({});
+    
+    if (notes.length > 0) {
+      // Convert string IDs to ObjectId if needed and ensure proper date format
+      const notesToInsert = notes.map(note => ({
+        ...note,
+        _id: new ObjectId(),
+        createdAt: note.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }));
+      
+      await db.collection('notes').insertMany(notesToInsert);
+    }
+    
+    res.json({ success: true, message: 'Notes saved successfully' });
   } catch (error) {
-    showStatus('Search failed', 'updating');
+    console.error('Error saving notes:', error);
+    res.status(500).json({ error: 'Failed to save notes' });
   }
-}
+});
 
-function clearSearchFunction() {
-  searchInput.value = '';
-  loadNotes();
-  searchBox.style.display = 'none';
-}
+// Search notes
+app.get('/api/notes/search', async (req, res) => {
+  try {
+    const query = req.query.query;
+    if (!query) {
+      return res.json([]);
+    }
+    
+    const notes = await db.collection('notes').find({
+      $or: [
+        { title: { $regex: query, $options: 'i' } },
+        { content: { $regex: query, $options: 'i' } },
+        { tags: { $regex: query, $options: 'i' } }
+      ]
+    }).toArray();
+    
+    res.json(notes);
+  } catch (error) {
+    console.error('Error searching notes:', error);
+    res.status(500).json({ error: 'Search failed' });
+  }
+});
 
 // Export notes
-async function exportNotes() {
+app.get('/api/export', async (req, res) => {
   try {
-    const response = await fetch('/api/export');
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `notes-export-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-    showStatus('Notes exported successfully!');
+    const notes = await db.collection('notes').find({}).toArray();
+    
+    // Remove MongoDB _id field from export
+    const exportData = notes.map(note => {
+      const { _id, ...noteData } = note;
+      return noteData;
+    });
+    
+    res.setHeader('Content-Disposition', 'attachment; filename=notes-export.json');
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify(exportData, null, 2));
   } catch (error) {
-    showStatus('Export failed', 'updating');
+    console.error('Error exporting notes:', error);
+    res.status(500).json({ error: 'Export failed' });
   }
+});
+
+// Serve the main page
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Start server
+async function startServer() {
+  await connectDB();
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
 }
 
-// Initialize the app
-init();
+startServer().catch(console.error);
