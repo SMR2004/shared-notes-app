@@ -1,7 +1,6 @@
 const express = require('express');
 const { MongoClient, ObjectId } = require('mongodb');
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,7 +20,7 @@ async function connectDB() {
     const client = new MongoClient(mongoUrl);
     await client.connect();
     db = client.db(dbName);
-    console.log('Connected to MongoDB');
+    console.log('✅ SUCCESS: Connected to MongoDB Atlas!');
   } catch (error) {
     console.error('MongoDB connection error:', error);
   }
@@ -119,7 +118,10 @@ app.get('/', (req, res) => {
 async function startServer() {
   await connectDB();
   app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`🚀 Shared Notes Wall running on port ${PORT}`);
+    console.log(`💾 Database: MongoDB Atlas`);
+    console.log(`🔓 No login required - open access`);
+    console.log(`✅ Notes persist in cloud storage!`);
   });
 }
 
