@@ -34,10 +34,27 @@ async function connectToMongoDB() {
   }
 }
 
-connectToMongoDB();
+// IMPROVEMENT: Add reconnection logic
+connectToMongoDB().then(success => {
+  if (!success) {
+    console.log('🔄 Will retry MongoDB connection on first request...');
+  }
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(__dirname));
+
+// IMPROVEMENT: Add database availability middleware
+app.use(async (req, res, next) => {
+  if (!db) {
+    try {
+      await connectToMongoDB();
+    } catch (error) {
+      console.log('Database still unavailable');
+    }
+  }
+  next();
+});
 
 // NOTES ROUTES - NO AUTHENTICATION NEEDED
 
