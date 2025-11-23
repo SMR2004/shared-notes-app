@@ -1,4 +1,3 @@
-<script>
 // DOM Elements
 const wall = document.getElementById("wall");
 const status = document.getElementById("status");
@@ -36,9 +35,8 @@ let isUserTyping = false;
 let resizeStartSize = { width: 0, height: 0 };
 let resizeStartPos = { x: 0, y: 0 };
 let soundsEnabled = true;
-let currentBackground = { type: 'color', value: '#f5f5f5' };
 
-// Background options
+// Background options - LOCAL ONLY
 const backgrounds = {
   default: '#f5f5f5',
   black: '#000000',
@@ -50,24 +48,33 @@ const backgrounds = {
 // Initialize
 async function init() {
   setupEventListeners();
-  await loadBackground();
+  loadLocalBackground(); // Load from localStorage
   await loadNotes();
   setInterval(smartRefresh, 3000);
   showStatus('Ready! Shared notes wall loaded.');
 }
 
-// Load shared background from server
-async function loadBackground() {
-  try {
-    const response = await fetch('/api/background');
-    const background = await response.json();
-    currentBackground = background;
-    applyBackground(background);
-  } catch (error) {
-    console.error('Error loading background:', error);
-    currentBackground = { type: 'color', value: '#f5f5f5' };
+// Load background from localStorage
+function loadLocalBackground() {
+  const savedBg = localStorage.getItem('wallBackground');
+  if (savedBg) {
+    try {
+      const background = JSON.parse(savedBg);
+      applyBackground(background);
+    } catch (e) {
+      applyBackground({ type: 'color', value: '#f5f5f5' });
+    }
+  } else {
     applyBackground({ type: 'color', value: '#f5f5f5' });
   }
+}
+
+// Save background to localStorage only
+function saveLocalBackground(type, value) {
+  const background = { type, value };
+  localStorage.setItem('wallBackground', JSON.stringify(background));
+  applyBackground(background);
+  showStatus('Background updated!');
 }
 
 // Apply background to wall
@@ -83,42 +90,12 @@ function applyBackground(background) {
   }
 }
 
-// Save background to server (shared for all users)
-async function saveBackground(type, value) {
-  try {
-    const response = await fetch('/api/background', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, value }),
-    });
-    
-    if (!response.ok) throw new Error('Failed to save background');
-    
-    currentBackground = { type, value };
-    applyBackground({ type, value });
-    showStatus('Background updated for all users!');
-  } catch (error) {
-    console.error('Error saving background:', error);
-    showStatus('Failed to update background', 'updating');
-  }
-}
-
-// Smart refresh - FIXED: Simple and reliable background sync
+// Smart refresh - NOTES ONLY (no background sync)
 async function smartRefresh() {
   if (isUserTyping) return;
   
   try {
-    // Refresh background with cache busting
-    const bgResponse = await fetch('/api/background?_=' + Date.now());
-    const serverBackground = await bgResponse.json();
-    
-    // Simple and reliable comparison
-    if (JSON.stringify(currentBackground) !== JSON.stringify(serverBackground)) {
-      currentBackground = serverBackground;
-      applyBackground(serverBackground);
-    }
-    
-    // Refresh notes
+    // Refresh notes only
     const notesResponse = await fetch('/api/notes');
     if (!notesResponse.ok) return;
     
@@ -174,7 +151,7 @@ function setupEventListeners() {
     });
   });
   
-  // Background picker
+  // Background picker - LOCAL ONLY
   bgBtn.addEventListener("click", () => {
     toggleBackgroundPicker();
     bgBtn.classList.add('pulse');
@@ -189,7 +166,7 @@ function setupEventListeners() {
         bgUpload.click();
       } else {
         const colorValue = backgrounds[bgType] || '#f5f5f5';
-        saveBackground('color', colorValue);
+        saveLocalBackground('color', colorValue);
         wall.style.animation = 'pulse 0.5s ease-in-out';
         setTimeout(() => wall.style.animation = '', 500);
       }
@@ -199,7 +176,7 @@ function setupEventListeners() {
     });
   });
   
-  // Background upload
+  // Background upload - LOCAL ONLY
   bgUpload.addEventListener('change', handleBackgroundUpload);
   
   // Image uploads
@@ -704,7 +681,7 @@ function handleImageUpload(event, noteId) {
   reader.readAsDataURL(file);
 }
 
-// Handle background upload
+// Handle background upload - LOCAL ONLY
 function handleBackgroundUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -716,8 +693,8 @@ function handleBackgroundUpload(event) {
   
   const reader = new FileReader();
   reader.onload = (e) => {
-    saveBackground('image', e.target.result);
-    showStatus('Background updated for all users!');
+    saveLocalBackground('image', e.target.result);
+    showStatus('Background updated!');
   };
   reader.readAsDataURL(file);
 }
@@ -810,4 +787,3 @@ async function exportNotes() {
 
 // Initialize the app
 init();
-</script>
