@@ -5,22 +5,34 @@ const session = require('express-session');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// MongoDB connection - USE YOUR ACTUAL PASSWORD HERE
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://notes-admin:SMR40K@shared-notes-cluster.stiblxk.mongodb.net/notesapp?retryWrites=true&w=majority';
+// CORRECTED MongoDB connection string with SSL fix
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://notes-admin:SMR40K@shared-notes-cluster.stiblxk.mongodb.net/notesapp?retryWrites=true&w=majority&ssl=true&tlsAllowInvalidCertificates=false';
 
 let db;
 let client;
 
-// Connect to MongoDB
+// Connect to MongoDB with error handling
 async function connectToMongoDB() {
   try {
-    client = new MongoClient(MONGODB_URI);
+    client = new MongoClient(MONGODB_URI, {
+      serverSelectionTimeoutMS: 30000, // 30 seconds timeout
+      socketTimeoutMS: 45000, // 45 seconds socket timeout
+    });
+    
     await client.connect();
     db = client.db('notesapp');
-    console.log('✅ Connected to MongoDB Atlas');
+    
+    // Test the connection
+    await db.command({ ping: 1 });
+    console.log('✅ Successfully connected to MongoDB Atlas!');
     console.log('📍 Cluster: shared-notes-cluster');
+    
   } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
+    console.error('❌ MongoDB connection failed:', error.message);
+    console.log('💡 Troubleshooting tips:');
+    console.log('   1. Check your MongoDB Network Access (allow all IPs: 0.0.0.0/0)');
+    console.log('   2. Verify your username/password in the connection string');
+    console.log('   3. Make sure the database "notesapp" exists');
   }
 }
 
@@ -29,18 +41,22 @@ connectToMongoDB();
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(__dirname));
 
-// Session middleware for user login
+// Session middleware - using memory store for simplicity
 app.use(session({
-  secret: 'notes-app-secret-key-2024',
+  secret: process.env.SESSION_SECRET || 'notes-app-secret-key-2024-change-in-production',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
+  cookie: { 
+    secure: false, 
+    maxAge: 24 * 60 * 60 * 1000,
+    httpOnly: true
+  }
 }));
 
 // Check if user is logged in
 function requireLogin(req, res, next) {
   if (!req.session.userId) {
-    return res.status(401).json({ error: 'Please login' });
+    return res.status(401).json({ error: 'Please login first' });
   }
   next();
 }
@@ -64,6 +80,11 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 3 characters' });
     }
     
+    // Check if database is connected
+    if (!db) {
+      return res.status(500).json({ error: 'Database not connected. Please try again.' });
+    }
+    
     // Check if user exists
     const existingUser = await db.collection('users').findOne({ username });
     if (existingUser) {
@@ -84,10 +105,15 @@ app.post('/api/register', async (req, res) => {
     req.session.userId = result.insertedId.toString();
     req.session.username = username;
     
-    res.json({ message: 'User created successfully', username });
+    res.json({ 
+      message: 'Account created successfully!', 
+      username,
+      redirect: true
+    });
+    
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ error: 'Server error during registration' });
+    res.status(500).json({ error: 'Server error during registration. Please try again.' });
   }
 });
 
@@ -98,6 +124,11 @@ app.post('/api/login', async (req, res) => {
     
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password required' });
+    }
+    
+    // Check if database is connected
+    if (!db) {
+      return res.status(500).json({ error: 'Database not connected. Please try again.' });
     }
     
     // Find user
@@ -116,25 +147,64 @@ app.post('/api/login', async (req, res) => {
     req.session.userId = user._id.toString();
     req.session.username = username;
     
-    res.json({ message: 'Login successful', username });
+    res.json({ 
+      message: 'Login successful!', 
+      username,
+      redirect: true
+    });
+    
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Server error during login' });
+    res.status(500).json({ error: 'Server error during login. Please try again.' });
   }
 });
 
 // Logout user
 app.post('/api/logout', (req, res) => {
-  req.session.destroy();
-  res.json({ message: 'Logout successful' });
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Logout failed' });
+    }
+    res.json({ message: 'Logout successful' });
+  });
 });
 
 // Get current user
 app.get('/api/user', (req, res) => {
   if (req.session.userId) {
-    res.json({ username: req.session.username, loggedIn: true });
+    res.json({ 
+      username: req.session.username, 
+      loggedIn: true 
+    });
   } else {
     res.json({ loggedIn: false });
+  }
+});
+
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
+  try {
+    if (db) {
+      await db.command({ ping: 1 });
+      res.json({ 
+        status: 'healthy', 
+        database: 'connected',
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(503).json({ 
+        status: 'unhealthy', 
+        database: 'disconnected',
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    res.status(503).json({ 
+      status: 'unhealthy', 
+      database: 'error',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 
@@ -143,17 +213,22 @@ app.get('/api/user', (req, res) => {
 // Get all notes for current user + public notes
 app.get('/api/notes', requireLogin, async (req, res) => {
   try {
+    if (!db) {
+      return res.status(500).json({ error: 'Database not available' });
+    }
+    
     const notes = await db.collection('notes').find({
       $or: [
         { userId: req.session.userId },
         { isPublic: true }
       ]
-    }).toArray();
+    }).sort({ lastModified: -1 }).toArray();
     
     res.json(notes);
+    
   } catch (error) {
     console.error('Error fetching notes:', error);
-    res.status(500).json({ error: 'Failed to fetch notes' });
+    res.status(500).json({ error: 'Failed to load notes. Please refresh the page.' });
   }
 });
 
@@ -162,8 +237,12 @@ app.get('/api/notes/search', requireLogin, async (req, res) => {
   try {
     const { query } = req.query;
     
-    if (!query) {
-      return res.status(400).json({ error: 'Search query required' });
+    if (!query || query.trim() === '') {
+      return res.status(400).json({ error: 'Please enter a search term' });
+    }
+    
+    if (!db) {
+      return res.status(500).json({ error: 'Database not available' });
     }
     
     const notes = await db.collection('notes').find({
@@ -185,9 +264,10 @@ app.get('/api/notes/search', requireLogin, async (req, res) => {
     }).toArray();
     
     res.json(notes);
+    
   } catch (error) {
     console.error('Search error:', error);
-    res.status(500).json({ error: 'Search failed' });
+    res.status(500).json({ error: 'Search failed. Please try again.' });
   }
 });
 
@@ -195,6 +275,10 @@ app.get('/api/notes/search', requireLogin, async (req, res) => {
 app.post('/api/notes', requireLogin, async (req, res) => {
   try {
     const notes = req.body;
+    
+    if (!db) {
+      return res.status(500).json({ error: 'Database not available' });
+    }
     
     // Delete all user's notes first
     await db.collection('notes').deleteMany({ userId: req.session.userId });
@@ -211,16 +295,24 @@ app.post('/api/notes', requireLogin, async (req, res) => {
       await db.collection('notes').insertMany(notesWithUser);
     }
     
-    res.json({ message: 'Notes saved to MongoDB' });
+    res.json({ 
+      message: `Saved ${notesWithUser.length} notes to database`,
+      count: notesWithUser.length
+    });
+    
   } catch (error) {
     console.error('Error saving notes:', error);
-    res.status(500).json({ error: 'Failed to save notes' });
+    res.status(500).json({ error: 'Failed to save notes. Please try again.' });
   }
 });
 
 // Export user's notes
 app.get('/api/export', requireLogin, async (req, res) => {
   try {
+    if (!db) {
+      return res.status(500).json({ error: 'Database not available' });
+    }
+    
     const notes = await db.collection('notes').find({
       userId: req.session.userId
     }).toArray();
@@ -228,15 +320,17 @@ app.get('/api/export', requireLogin, async (req, res) => {
     const exportData = {
       exportedAt: new Date(),
       username: req.session.username,
+      noteCount: notes.length,
       notes: notes
     };
     
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', 'attachment; filename=my-notes-export.json');
+    res.setHeader('Content-Disposition', `attachment; filename=${req.session.username}-notes-${new Date().toISOString().split('T')[0]}.json`);
     res.send(JSON.stringify(exportData, null, 2));
+    
   } catch (error) {
     console.error('Export error:', error);
-    res.status(500).json({ error: 'Export failed' });
+    res.status(500).json({ error: 'Export failed. Please try again.' });
   }
 });
 
@@ -245,8 +339,16 @@ app.get('*', (req, res) => {
   res.sendFile(__dirname + '/index.html');
 });
 
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Something went wrong! Please try again.' });
+});
+
 app.listen(PORT, () => {
-  console.log('🚀 Shared Notes Wall running on port', PORT);
-  console.log('💾 Database: MongoDB Atlas - shared-notes-cluster');
+  console.log('🚀 Ultimate Shared Notes Wall running on port', PORT);
+  console.log('💾 Database: MongoDB Atlas Cloud');
+  console.log('🔗 Health check: /api/health');
   console.log('✅ Notes persist forever in the cloud!');
+  console.log('📱 App URL: https://shared-notes-app-g6ol.onrender.com');
 });
