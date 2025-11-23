@@ -48,7 +48,7 @@ const backgrounds = {
 // Initialize
 async function init() {
   setupEventListeners();
-  loadLocalBackground(); // Load from localStorage
+  loadLocalBackground();
   await loadNotes();
   setInterval(smartRefresh, 3000);
   showStatus('Ready! Shared notes wall loaded.');
@@ -56,25 +56,15 @@ async function init() {
 
 // Load background from localStorage
 function loadLocalBackground() {
-  const savedBg = localStorage.getItem('wallBackground');
-  if (savedBg) {
+  const saved = localStorage.getItem('wallBackground');
+  if (saved) {
     try {
-      const background = JSON.parse(savedBg);
+      const background = JSON.parse(saved);
       applyBackground(background);
-    } catch (e) {
-      applyBackground({ type: 'color', value: '#f5f5f5' });
-    }
-  } else {
-    applyBackground({ type: 'color', value: '#f5f5f5' });
+      return;
+    } catch (e) {}
   }
-}
-
-// Save background to localStorage only
-function saveLocalBackground(type, value) {
-  const background = { type, value };
-  localStorage.setItem('wallBackground', JSON.stringify(background));
-  applyBackground(background);
-  showStatus('Background updated!');
+  applyBackground({ type: 'color', value: '#f5f5f5' });
 }
 
 // Apply background to wall
@@ -86,16 +76,22 @@ function applyBackground(background) {
     wall.style.backgroundImage = `url(${background.value})`;
     wall.style.backgroundSize = 'cover';
     wall.style.backgroundPosition = 'center';
-    wall.style.backgroundColor = '#f5f5f5';
   }
 }
 
-// Smart refresh - NOTES ONLY (no background sync)
+// Save background to localStorage only
+function saveLocalBackground(type, value) {
+  const background = { type, value };
+  localStorage.setItem('wallBackground', JSON.stringify(background));
+  applyBackground(background);
+  showStatus('Background updated!');
+}
+
+// Smart refresh - NOTES ONLY
 async function smartRefresh() {
   if (isUserTyping) return;
   
   try {
-    // Refresh notes only
     const notesResponse = await fetch('/api/notes');
     if (!notesResponse.ok) return;
     
@@ -112,7 +108,6 @@ async function smartRefresh() {
 
 // Set up event listeners
 function setupEventListeners() {
-  // Toolbar buttons
   addBtn.addEventListener("click", () => {
     createNote();
     addBtn.classList.add('pulse');
@@ -125,7 +120,6 @@ function setupEventListeners() {
     setTimeout(() => addImageBtn.classList.remove('pulse'), 500);
   });
   
-  // Color picker
   colorBtn.addEventListener("click", () => {
     toggleColorPalette();
     colorBtn.classList.add('pulse');
@@ -151,7 +145,6 @@ function setupEventListeners() {
     });
   });
   
-  // Background picker - LOCAL ONLY
   bgBtn.addEventListener("click", () => {
     toggleBackgroundPicker();
     bgBtn.classList.add('pulse');
@@ -171,18 +164,13 @@ function setupEventListeners() {
         setTimeout(() => wall.style.animation = '', 500);
       }
       
-      updateActiveBackground(bgType);
       backgroundPicker.style.display = 'none';
     });
   });
   
-  // Background upload - LOCAL ONLY
   bgUpload.addEventListener('change', handleBackgroundUpload);
-  
-  // Image uploads
   standaloneImageUpload.addEventListener('change', handleStandaloneImageUpload);
   
-  // Search functionality
   searchBtn.addEventListener('click', () => {
     toggleSearch();
     searchBtn.classList.add('pulse');
@@ -190,23 +178,18 @@ function setupEventListeners() {
   });
   
   doSearch.addEventListener('click', performSearch);
-  
-  clearSearchBtn.addEventListener('click', () => {
-    clearSearchFunction();
-  });
+  clearSearchBtn.addEventListener('click', clearSearchFunction);
   
   searchInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') performSearch();
   });
   
-  // Export
   exportBtn.addEventListener('click', () => {
     exportNotes();
     exportBtn.classList.add('pulse');
     setTimeout(() => exportBtn.classList.remove('pulse'), 500);
   });
   
-  // Image modal
   closeModal.addEventListener('click', () => {
     imageModal.style.display = 'none';
   });
@@ -217,7 +200,6 @@ function setupEventListeners() {
     }
   });
   
-  // Sound toggle
   soundToggle.addEventListener('click', () => {
     soundsEnabled = !soundsEnabled;
     soundToggle.classList.toggle('muted', !soundsEnabled);
@@ -226,7 +208,6 @@ function setupEventListeners() {
     setTimeout(() => soundToggle.classList.remove('pulse'), 500);
   });
   
-  // Close pickers when clicking outside
   document.addEventListener('click', (e) => {
     if (!colorBtn.contains(e.target) && !colorPalette.contains(e.target)) {
       colorPalette.style.display = 'none';
@@ -242,7 +223,6 @@ function setupEventListeners() {
     }
   });
   
-  // Keyboard shortcut
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
       e.preventDefault();
@@ -255,7 +235,6 @@ function setupEventListeners() {
 async function loadNotes() {
   try {
     const response = await fetch('/api/notes');
-    
     if (!response.ok) throw new Error('Failed to load notes');
     
     notes = await response.json();
@@ -447,7 +426,6 @@ function createImageElement(note) {
 
 // Set up event listeners for a note
 function setupNoteEvents(noteElement, noteData) {
-  // Delete button
   noteElement.querySelector('.delete-btn').addEventListener('click', async (e) => {
     e.stopPropagation();
     notes = notes.filter(n => n.id !== noteData.id);
@@ -456,7 +434,6 @@ function setupNoteEvents(noteElement, noteData) {
     showStatus('Note deleted');
   });
   
-  // Color button
   noteElement.querySelector('.color-btn').addEventListener('click', (e) => {
     e.stopPropagation();
     currentColorNote = noteElement;
@@ -471,7 +448,6 @@ function setupNoteEvents(noteElement, noteData) {
     });
   });
   
-  // Tag button
   noteElement.querySelector('.tag-btn').addEventListener('click', (e) => {
     e.stopPropagation();
     const tag = prompt('Enter tags (comma separated):', noteData.tags ? noteData.tags.join(', ') : '');
@@ -483,7 +459,6 @@ function setupNoteEvents(noteElement, noteData) {
     }
   });
   
-  // Image button
   noteElement.querySelector('.image-btn').addEventListener('click', (e) => {
     e.stopPropagation();
     currentColorNote = noteElement;
@@ -491,7 +466,6 @@ function setupNoteEvents(noteElement, noteData) {
     imageUpload.click();
   });
   
-  // Image click to enlarge
   const noteImage = noteElement.querySelector('.note-image');
   if (noteImage) {
     noteImage.addEventListener('click', () => {
@@ -500,7 +474,6 @@ function setupNoteEvents(noteElement, noteData) {
     });
   }
   
-  // Title input
   const titleInput = noteElement.querySelector('.note-title');
   titleInput.addEventListener('input', async (e) => {
     isUserTyping = true;
@@ -512,7 +485,6 @@ function setupNoteEvents(noteElement, noteData) {
   titleInput.addEventListener('focus', () => { isUserTyping = true; });
   titleInput.addEventListener('blur', () => { isUserTyping = false; });
   
-  // Content input
   const contentInput = noteElement.querySelector('.note-content');
   contentInput.addEventListener('input', async (e) => {
     isUserTyping = true;
@@ -524,16 +496,12 @@ function setupNoteEvents(noteElement, noteData) {
   contentInput.addEventListener('focus', () => { isUserTyping = true; });
   contentInput.addEventListener('blur', () => { isUserTyping = false; });
   
-  // Drag functionality
   setupDrag(noteElement, noteData);
-  
-  // Resize functionality
   setupResize(noteElement, noteData);
 }
 
 // Set up event listeners for standalone image
 function setupImageEvents(imageElement, imageData) {
-  // Delete button
   imageElement.querySelector('.delete-btn').addEventListener('click', async (e) => {
     e.stopPropagation();
     notes = notes.filter(n => n.id !== imageData.id);
@@ -542,7 +510,6 @@ function setupImageEvents(imageElement, imageData) {
     showStatus('Image deleted');
   });
   
-  // Image click to enlarge
   const img = imageElement.querySelector('.standalone-image');
   img.addEventListener('click', (e) => {
     if (e.target.classList.contains('note-btn')) return;
@@ -550,10 +517,7 @@ function setupImageEvents(imageElement, imageData) {
     imageModal.style.display = 'flex';
   });
   
-  // Drag functionality
   setupDrag(imageElement, imageData);
-  
-  // Resize functionality
   setupResize(imageElement, imageData);
 }
 
@@ -681,7 +645,7 @@ function handleImageUpload(event, noteId) {
   reader.readAsDataURL(file);
 }
 
-// Handle background upload - LOCAL ONLY
+// Handle background upload
 function handleBackgroundUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -697,13 +661,6 @@ function handleBackgroundUpload(event) {
     showStatus('Background updated!');
   };
   reader.readAsDataURL(file);
-}
-
-// Update active background in picker
-function updateActiveBackground(activeBg) {
-  document.querySelectorAll('.bg-option').forEach(option => {
-    option.classList.toggle('active', option.dataset.bg === activeBg);
-  });
 }
 
 // Update note color
