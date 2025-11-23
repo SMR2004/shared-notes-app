@@ -1065,4 +1065,259 @@ function setupImageEvents(imageElement, imageData) {
   imageElement.querySelector('.delete-btn').addEventListener('click', async (e) => {
     e.stopPropagation();
     notes = notes.filter(n => n.id !== imageData.id);
-    renderNotes
+    renderNotes();
+    await saveNotes();
+    showStatus('Image deleted');
+  });
+  
+  // Image click to enlarge
+  const img = imageElement.querySelector('.standalone-image');
+  img.addEventListener('click', (e) => {
+    if (e.target.classList.contains('note-btn')) return;
+    modalImage.src = img.src;
+    imageModal.style.display = 'flex';
+  });
+  
+  // Drag functionality
+  setupDrag(imageElement, imageData);
+  
+  // Resize functionality
+  setupResize(imageElement, imageData);
+}
+
+// Drag functionality
+function setupDrag(element, data) {
+  element.addEventListener('mousedown', (e) => {
+    if (e.target.classList.contains('resize-handle') || 
+        e.target.tagName === 'INPUT' || 
+        e.target.tagName === 'TEXTAREA' ||
+        e.target.classList.contains('note-btn')) {
+      return;
+    }
+    
+    e.preventDefault();
+    isDragging = true;
+    currentElement = element;
+    element.classList.add('dragging');
+    
+    const rect = element.getBoundingClientRect();
+    dragOffset.x = e.clientX - rect.left;
+    dragOffset.y = e.clientY - rect.top;
+    
+    function drag(e) {
+      if (!isDragging) return;
+      const x = e.clientX - dragOffset.x;
+      const y = e.clientY - dragOffset.y;
+      
+      element.style.left = x + 'px';
+      element.style.top = y + 'px';
+    }
+    
+    function stopDrag() {
+      isDragging = false;
+      element.classList.remove('dragging');
+      data.x = parseInt(element.style.left);
+      data.y = parseInt(element.style.top);
+      saveNotes();
+      
+      document.removeEventListener('mousemove', drag);
+      document.removeEventListener('mouseup', stopDrag);
+    }
+    
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('mouseup', stopDrag);
+  });
+}
+
+// Resize functionality
+function setupResize(element, data) {
+  const handle = element.querySelector('.resize-handle');
+  
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizing = true;
+    element.classList.add('resizing');
+    
+    resizeStartSize.width = element.offsetWidth;
+    resizeStartSize.height = element.offsetHeight;
+    resizeStartPos.x = e.clientX;
+    resizeStartPos.y = e.clientY;
+    
+    function resize(e) {
+      if (!isResizing) return;
+      
+      const deltaX = e.clientX - resizeStartPos.x;
+      const deltaY = e.clientY - resizeStartPos.y;
+      
+      const newWidth = Math.max(200, resizeStartSize.width + deltaX);
+      const newHeight = Math.max(150, resizeStartSize.height + deltaY);
+      
+      element.style.width = newWidth + 'px';
+      element.style.height = newHeight + 'px';
+    }
+    
+    function stopResize() {
+      isResizing = false;
+      element.classList.remove('resizing');
+      data.width = parseInt(element.style.width);
+      data.height = parseInt(element.style.height);
+      saveNotes();
+      
+      document.removeEventListener('mousemove', resize);
+      document.removeEventListener('mouseup', stopResize);
+    }
+    
+    document.addEventListener('mousemove', resize);
+    document.addEventListener('mouseup', stopResize);
+  });
+}
+
+// Handle image upload to note
+function handleImageUpload(event, noteId) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  if (file.size > 5 * 1024 * 1024) {
+    showStatus('Image too large! Max 5MB allowed.', 'updating');
+    return;
+  }
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const note = notes.find(n => n.id === noteId);
+    if (note) {
+      note.image = e.target.result;
+      renderNotes();
+      saveNotes();
+      showStatus('Image added to note!');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// Handle background upload
+function handleBackgroundUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  if (file.size > 10 * 1024 * 1024) {
+    showStatus('Background image too large! Max 10MB allowed.', 'updating');
+    return;
+  }
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    wall.style.backgroundImage = `url(${e.target.result})`;
+    localStorage.setItem('customBackground', e.target.result);
+    showStatus('Background updated!');
+  };
+  reader.readAsDataURL(file);
+}
+
+// Set background
+function setBackground(bgType) {
+  if (bgType === 'default') {
+    wall.style.backgroundImage = 'none';
+    wall.style.backgroundColor = backgrounds.default;
+    localStorage.removeItem('customBackground');
+  } else if (backgrounds[bgType]) {
+    wall.style.backgroundImage = 'none';
+    wall.style.backgroundColor = backgrounds[bgType];
+    localStorage.removeItem('customBackground');
+  }
+}
+
+// Update active background in picker
+function updateActiveBackground(activeBg) {
+  document.querySelectorAll('.bg-option').forEach(option => {
+    option.classList.toggle('active', option.dataset.bg === activeBg);
+  });
+}
+
+// Update note color
+function updateNoteColor(noteId, color) {
+  const note = notes.find(n => n.id === noteId);
+  if (note) {
+    note.color = color;
+    saveNotes();
+  }
+}
+
+// Toggle color palette
+function toggleColorPalette() {
+  colorPalette.style.display = colorPalette.style.display === 'grid' ? 'none' : 'grid';
+  backgroundPicker.style.display = 'none';
+  searchBox.style.display = 'none';
+  currentColorNote = null;
+}
+
+// Toggle background picker
+function toggleBackgroundPicker() {
+  backgroundPicker.style.display = backgroundPicker.style.display === 'flex' ? 'none' : 'flex';
+  colorPalette.style.display = 'none';
+  searchBox.style.display = 'none';
+}
+
+// Search functionality
+function toggleSearch() {
+  searchBox.style.display = searchBox.style.display === 'none' ? 'block' : 'none';
+  colorPalette.style.display = 'none';
+  backgroundPicker.style.display = 'none';
+}
+
+async function performSearch() {
+  const query = searchInput.value;
+  if (!query.trim()) return;
+  
+  try {
+    const response = await fetch(`/api/notes/search?query=${encodeURIComponent(query)}`);
+    const searchResults = await response.json();
+    
+    notes = searchResults;
+    renderNotes();
+    showStatus(`Found ${searchResults.length} notes matching "${query}"`);
+  } catch (error) {
+    showStatus('Search failed', 'updating');
+  }
+}
+
+function clearSearch() {
+  searchInput.value = '';
+  loadNotes();
+  searchBox.style.display = 'none';
+}
+
+// Export notes
+async function exportNotes() {
+  try {
+    const response = await fetch('/api/export');
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `notes-export-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    showStatus('Notes exported successfully!');
+  } catch (error) {
+    showStatus('Export failed', 'updating');
+  }
+}
+
+// Load saved background on startup
+function loadSavedBackground() {
+  const savedBg = localStorage.getItem('customBackground');
+  if (savedBg) {
+    wall.style.backgroundImage = `url(${savedBg})`;
+  }
+}
+
+// Initialize the app
+init();
+loadSavedBackground();
+</script>
+</body>
+</html>
