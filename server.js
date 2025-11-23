@@ -9,9 +9,8 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static('.'));
 
-// MongoDB connection
-const mongoUrl = process.env.MONGODB_URI || 'mongodb://localhost:27017';
-const dbName = 'shared-notes';
+// MongoDB connection - USING YOUR PROVIDED CONNECTION STRING
+const mongoUrl = process.env.MONGODB_URI || 'mongodb+srv://notes-admin:SMR40K@shared-notes-cluster.stiblxk.mongodb.net/notesapp?retryWrites=true&w=majority';
 let db;
 
 // Connect to MongoDB
@@ -19,20 +18,35 @@ async function connectDB() {
   try {
     const client = new MongoClient(mongoUrl);
     await client.connect();
-    db = client.db(dbName);
+    db = client.db(); // Let it use the database from connection string
     console.log('✅ SUCCESS: Connected to MongoDB Atlas!');
+    
+    // Create index for better performance
+    await db.collection('notes').createIndex({ id: 1 });
   } catch (error) {
     console.error('MongoDB connection error:', error);
+    // Don't exit, let the server start anyway
   }
 }
 
-// Routes - NOTES ONLY (no background routes)
+// Routes - NOTES ONLY
 
 // Get all notes
 app.get('/api/notes', async (req, res) => {
   try {
+    if (!db) {
+      return res.status(500).json({ error: 'Database not connected' });
+    }
+    
     const notes = await db.collection('notes').find({}).toArray();
-    res.json(notes);
+    
+    // Convert MongoDB _id to string id for frontend
+    const formattedNotes = notes.map(note => {
+      const { _id, ...noteData } = note;
+      return noteData;
+    });
+    
+    res.json(formattedNotes);
   } catch (error) {
     console.error('Error fetching notes:', error);
     res.status(500).json({ error: 'Failed to fetch notes' });
@@ -42,16 +56,19 @@ app.get('/api/notes', async (req, res) => {
 // Save all notes
 app.post('/api/notes', async (req, res) => {
   try {
+    if (!db) {
+      return res.status(500).json({ error: 'Database not connected' });
+    }
+    
     const notes = req.body;
     
     // Clear existing notes and insert new ones
     await db.collection('notes').deleteMany({});
     
     if (notes.length > 0) {
-      // Convert string IDs to ObjectId if needed and ensure proper date format
+      // Prepare notes for insertion - keep original IDs and dates
       const notesToInsert = notes.map(note => ({
         ...note,
-        _id: new ObjectId(),
         createdAt: note.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString()
       }));
@@ -69,6 +86,10 @@ app.post('/api/notes', async (req, res) => {
 // Search notes
 app.get('/api/notes/search', async (req, res) => {
   try {
+    if (!db) {
+      return res.status(500).json({ error: 'Database not connected' });
+    }
+    
     const query = req.query.query;
     if (!query) {
       return res.json([]);
@@ -82,7 +103,13 @@ app.get('/api/notes/search', async (req, res) => {
       ]
     }).toArray();
     
-    res.json(notes);
+    // Convert MongoDB _id to string id for frontend
+    const formattedNotes = notes.map(note => {
+      const { _id, ...noteData } = note;
+      return noteData;
+    });
+    
+    res.json(formattedNotes);
   } catch (error) {
     console.error('Error searching notes:', error);
     res.status(500).json({ error: 'Search failed' });
@@ -92,6 +119,10 @@ app.get('/api/notes/search', async (req, res) => {
 // Export notes
 app.get('/api/export', async (req, res) => {
   try {
+    if (!db) {
+      return res.status(500).json({ error: 'Database not connected' });
+    }
+    
     const notes = await db.collection('notes').find({}).toArray();
     
     // Remove MongoDB _id field from export
@@ -109,6 +140,19 @@ app.get('/api/export', async (req, res) => {
   }
 });
 
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
+  try {
+    if (!db) {
+      return res.json({ status: 'Database disconnected' });
+    }
+    await db.command({ ping: 1 });
+    res.json({ status: 'OK', database: 'Connected' });
+  } catch (error) {
+    res.json({ status: 'Database error' });
+  }
+});
+
 // Serve the main page
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
@@ -117,11 +161,15 @@ app.get('/', (req, res) => {
 // Start server
 async function startServer() {
   await connectDB();
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Shared Notes Wall running on port ${PORT}`);
     console.log(`💾 Database: MongoDB Atlas`);
     console.log(`🔓 No login required - open access`);
-    console.log(`✅ Notes persist in cloud storage!`);
+    console.log(`📝 Notes will persist in cloud storage!`);
+    
+    if (!db) {
+      console.log(`⚠️  Warning: Database not connected, using local storage only`);
+    }
   });
 }
 
