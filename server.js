@@ -37,6 +37,7 @@ let resizeStartSize = { width: 0, height: 0 };
 let resizeStartPos = { x: 0, y: 0 };
 let soundsEnabled = true;
 let currentBackground = { type: 'color', value: '#f5f5f5' };
+let lastBackgroundUpdate = 0; // NEW: Track when we last updated background
 
 // Background options
 const backgrounds = {
@@ -56,17 +57,19 @@ async function init() {
   showStatus('Ready! Shared notes wall loaded.');
 }
 
-// Load shared background from server
+// Load shared background from server - FIXED: Better error handling
 async function loadBackground() {
   try {
     const response = await fetch('/api/background');
+    if (!response.ok) throw new Error('Failed to load background');
+    
     const background = await response.json();
     currentBackground = { ...background };
     applyBackground(background);
+    lastBackgroundUpdate = Date.now(); // Track when we loaded
   } catch (error) {
     console.error('Error loading background:', error);
-    currentBackground = { type: 'color', value: '#f5f5f5' };
-    applyBackground({ type: 'color', value: '#f5f5f5' });
+    // Don't reset to default if there's an error, keep current
   }
 }
 
@@ -77,13 +80,17 @@ function applyBackground(background) {
     wall.style.backgroundColor = background.value;
   } else if (background.type === 'image') {
     wall.style.backgroundImage = `url(${background.value})`;
+    wall.style.backgroundSize = 'cover';
+    wall.style.backgroundPosition = 'center';
     wall.style.backgroundColor = '#f5f5f5';
   }
 }
 
-// Save background to server (shared for all users)
+// Save background to server (shared for all users) - FIXED: Update timestamp
 async function saveBackground(type, value) {
   try {
+    lastBackgroundUpdate = Date.now(); // Mark that we just updated
+    
     const response = await fetch('/api/background', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -93,27 +100,38 @@ async function saveBackground(type, value) {
     if (!response.ok) throw new Error('Failed to save background');
     
     currentBackground = { type, value };
+    applyBackground({ type, value }); // Apply immediately
     showStatus('Background updated for all users!');
   } catch (error) {
     console.error('Error saving background:', error);
     showStatus('Failed to update background', 'updating');
+    // Reload background from server to sync state
+    setTimeout(loadBackground, 1000);
   }
 }
 
-// Smart refresh - FIXED: Proper background sync
+// Smart refresh - COMPLETELY REWRITTEN: Fixed background sync
 async function smartRefresh() {
   if (isUserTyping) return;
   
   try {
-    // Refresh background
-    const bgResponse = await fetch('/api/background');
-    const serverBackground = await bgResponse.json();
-    
-    // FIX: Proper background comparison
-    if (currentBackground.type !== serverBackground.type || 
-        currentBackground.value !== serverBackground.value) {
-      currentBackground = { ...serverBackground };
-      applyBackground(serverBackground);
+    // Only check for background updates if we haven't recently changed it ourselves
+    const timeSinceLastUpdate = Date.now() - lastBackgroundUpdate;
+    if (timeSinceLastUpdate > 2000) { // Wait 2 seconds after our own changes
+      const bgResponse = await fetch('/api/background');
+      if (bgResponse.ok) {
+        const serverBackground = await bgResponse.json();
+        
+        // Compare properly
+        const isDifferent = currentBackground.type !== serverBackground.type || 
+                           currentBackground.value !== serverBackground.value;
+        
+        if (isDifferent) {
+          console.log('Background changed from server:', serverBackground);
+          currentBackground = { ...serverBackground };
+          applyBackground(serverBackground);
+        }
+      }
     }
     
     // Refresh notes
@@ -175,7 +193,7 @@ function setupEventListeners() {
     });
   });
   
-  // Background picker
+  // Background picker - FIXED: Remove immediate apply, let saveBackground handle it
   bgBtn.addEventListener("click", () => {
     console.log("🏞️ Background clicked");
     toggleBackgroundPicker();
@@ -192,7 +210,7 @@ function setupEventListeners() {
       } else {
         const colorValue = backgrounds[bgType] || '#f5f5f5';
         saveBackground('color', colorValue);
-        applyBackground({ type: 'color', value: colorValue });
+        // REMOVED: applyBackground call - let saveBackground handle it
         wall.style.animation = 'pulse 0.5s ease-in-out';
         setTimeout(() => wall.style.animation = '', 500);
       }
@@ -202,7 +220,7 @@ function setupEventListeners() {
     });
   });
   
-  // Background upload
+  // Background upload - FIXED: Remove immediate apply
   bgUpload.addEventListener('change', handleBackgroundUpload);
   
   // Image uploads
@@ -710,7 +728,7 @@ function handleImageUpload(event, noteId) {
   reader.readAsDataURL(file);
 }
 
-// Handle background upload
+// Handle background upload - FIXED: Remove duplicate apply
 function handleBackgroundUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -723,7 +741,7 @@ function handleBackgroundUpload(event) {
   const reader = new FileReader();
   reader.onload = (e) => {
     saveBackground('image', e.target.result);
-    applyBackground({ type: 'image', value: e.target.result });
+    // REMOVED: applyBackground call - let saveBackground handle it
     showStatus('Background updated for all users!');
   };
   reader.readAsDataURL(file);
@@ -733,10 +751,8 @@ function handleBackgroundUpload(event) {
 function setBackground(bgType) {
   if (bgType === 'default') {
     saveBackground('color', '#f5f5f5');
-    applyBackground({ type: 'color', value: '#f5f5f5' });
   } else if (backgrounds[bgType]) {
     saveBackground('color', backgrounds[bgType]);
-    applyBackground({ type: 'color', value: backgrounds[bgType] });
   }
 }
 
